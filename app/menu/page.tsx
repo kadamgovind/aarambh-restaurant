@@ -299,11 +299,12 @@ const menuItems: MenuItem[] = [
   },
   {
     name: "Veg Kolhapuri",
-    description:
+    description: 
       "Mixed vegetables cooked in a bold and spicy Kolhapuri masala.",
     price: 220,
     category: "Main Course",
     type: "Veg",
+    image: "/images/menu/veg-kolhapuri.jpg",
   },
   {
     name: "Veg Handi",
