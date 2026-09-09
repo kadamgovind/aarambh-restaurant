@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+
 import { supabase } from "@/lib/supabase";
 
 type Order = {
@@ -46,6 +48,11 @@ type Restaurant = {
   name: string;
 };
 
+type Profile = {
+  id: string;
+  role: string | null;
+};
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -58,6 +65,10 @@ function formatTime(value: string) {
   if (!value) return "";
 
   const [hours, minutes] = value.split(":").map(Number);
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return value;
+  }
 
   const date = new Date();
 
@@ -100,6 +111,8 @@ function isNewOrder(status: string) {
 }
 
 export default function OwnerDashboard() {
+  const router = useRouter();
+
   const [restaurant, setRestaurant] =
     useState<Restaurant | null>(null);
 
@@ -128,13 +141,16 @@ export default function OwnerDashboard() {
      DATE HELPERS
   ========================================================= */
 
-  const getDateKey = (date: Date) => {
+  const getDateKey = useCallback((date: Date) => {
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(
+      2,
+      "0"
+    );
     const day = String(date.getDate()).padStart(2, "0");
 
     return `${year}-${month}-${day}`;
-  };
+  }, []);
 
   const todayKey = getDateKey(new Date());
 
@@ -167,21 +183,51 @@ export default function OwnerDashboard() {
       }
 
       if (!user) {
-        throw new Error(
-          "You must be logged in to access the owner dashboard."
-        );
+        router.replace("/login");
+        return;
       }
 
       /* -----------------------------------------------------
-         RESTAURANT
+         OWNER ROLE CHECK
       ----------------------------------------------------- */
 
-      const { data: restaurantData, error: restaurantError } =
+      const { data: profileData, error: profileError } =
         await supabase
-          .from("restaurants")
-          .select("id, name")
-          .eq("owner_id", user.id)
+          .from("profiles")
+          .select("id, role")
+          .eq("id", user.id)
           .maybeSingle();
+
+      if (profileError) {
+        throw new Error(profileError.message);
+      }
+
+      if (!profileData) {
+        router.replace("/account");
+        return;
+      }
+
+      const profile = profileData as Profile;
+
+      const role = profile.role?.toLowerCase();
+
+      if (role !== "owner") {
+        router.replace("/account");
+        return;
+      }
+
+      /* -----------------------------------------------------
+         RESTAURANT OWNERSHIP CHECK
+      ----------------------------------------------------- */
+
+      const {
+        data: restaurantData,
+        error: restaurantError,
+      } = await supabase
+        .from("restaurants")
+        .select("id, name")
+        .eq("owner_id", user.id)
+        .maybeSingle();
 
       if (restaurantError) {
         throw new Error(restaurantError.message);
@@ -205,9 +251,6 @@ export default function OwnerDashboard() {
 
       /* -----------------------------------------------------
          ORDERS
-         
-         We load today + yesterday so the dashboard can
-         calculate today's revenue and yesterday comparison.
       ----------------------------------------------------- */
 
       const { data: orderData, error: orderError } =
@@ -278,33 +321,30 @@ export default function OwnerDashboard() {
 
       /* -----------------------------------------------------
          RESERVATIONS
-         
-         Today's reservations.
       ----------------------------------------------------- */
 
-      const { data: reservationData, error: reservationError } =
-        await supabase
-          .from("reservations")
-          .select(
-            `
-              id,
-              customer_id,
-              reservation_date,
-              reservation_time,
-              guests,
-              customer_name,
-              customer_phone,
-              status
-            `
-          )
-          .eq(
-            "restaurant_id",
-            restaurantData.id
-          )
-          .eq("reservation_date", todayKey)
-          .order("reservation_time", {
-            ascending: true,
-          });
+      const {
+        data: reservationData,
+        error: reservationError,
+      } = await supabase
+        .from("reservations")
+        .select(
+          `
+            id,
+            customer_id,
+            reservation_date,
+            reservation_time,
+            guests,
+            customer_name,
+            customer_phone,
+            status
+          `
+        )
+        .eq("restaurant_id", restaurantData.id)
+        .eq("reservation_date", todayKey)
+        .order("reservation_time", {
+          ascending: true,
+        });
 
       if (reservationError) {
         throw new Error(reservationError.message);
@@ -325,22 +365,25 @@ export default function OwnerDashboard() {
             (order) => order.customer_id
           ),
           ...loadedReservations.map(
-            (reservation) => reservation.customer_id
+            (reservation) =>
+              reservation.customer_id
           ),
         ])
       );
 
       if (customerIds.length > 0) {
-        const { data: profileData, error: profileError } =
-          await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", customerIds);
+        const {
+          data: profileData,
+          error: customerProfileError,
+        } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", customerIds);
 
-        if (profileError) {
+        if (customerProfileError) {
           console.warn(
             "Dashboard profile warning:",
-            profileError.message
+            customerProfileError.message
           );
         } else {
           const profileMap: Record<
@@ -354,6 +397,8 @@ export default function OwnerDashboard() {
 
           setProfiles(profileMap);
         }
+      } else {
+        setProfiles({});
       }
 
       /* -----------------------------------------------------
@@ -409,10 +454,27 @@ export default function OwnerDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [todayKey, yesterdayKey]);
+  }, [
+    getDateKey,
+    router,
+    todayKey,
+    yesterdayKey,
+  ]);
 
   useEffect(() => {
-    loadDashboard();
+    let mounted = true;
+
+    async function initialize() {
+      if (!mounted) return;
+
+      await loadDashboard();
+    }
+
+    initialize();
+
+    return () => {
+      mounted = false;
+    };
   }, [loadDashboard]);
 
   /* =========================================================
@@ -427,13 +489,63 @@ export default function OwnerDashboard() {
       setActionLoading(orderId);
       setError("");
 
-      const { error: updateError } = await supabase
-        .from("orders")
-        .update({
-          status,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", orderId);
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw new Error(userError.message);
+      }
+
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+
+      /* -----------------------------------------------------
+         VERIFY OWNER SESSION BEFORE MUTATION
+      ----------------------------------------------------- */
+
+      const { data: ownerProfile, error: ownerError } =
+        await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+
+      if (ownerError) {
+        throw new Error(ownerError.message);
+      }
+
+      if (
+        ownerProfile?.role?.toLowerCase() !==
+        "owner"
+      ) {
+        router.replace("/account");
+        return;
+      }
+
+      /* -----------------------------------------------------
+         UPDATE ORDER
+         
+         RLS must also verify that this order belongs
+         to the owner's restaurant.
+      ----------------------------------------------------- */
+
+      const { error: updateError } =
+        await supabase
+          .from("orders")
+          .update({
+            status,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", orderId)
+          .eq(
+            "restaurant_id",
+            restaurant?.id || ""
+          );
 
       if (updateError) {
         throw new Error(updateError.message);
@@ -467,13 +579,6 @@ export default function OwnerDashboard() {
       !isCancelled(order.status)
   );
 
-  const yesterdayOrders = orders.filter(
-    (order) =>
-      getDateKey(new Date(order.created_at)) ===
-        yesterdayKey &&
-      !isCancelled(order.status)
-  );
-
   const todayRevenue = todayOrders.reduce(
     (total, order) =>
       total + Number(order.total_amount || 0),
@@ -497,9 +602,10 @@ export default function OwnerDashboard() {
 
   const upcomingReservations =
     todayReservations.filter((reservation) => {
-      const [hours, minutes] = reservation.reservation_time
-        .split(":")
-        .map(Number);
+      const [hours, minutes] =
+        reservation.reservation_time
+          .split(":")
+          .map(Number);
 
       const reservationTime = new Date();
 
@@ -510,7 +616,10 @@ export default function OwnerDashboard() {
         0
       );
 
-      return reservationTime.getTime() > Date.now();
+      return (
+        reservationTime.getTime() >
+        Date.now()
+      );
     });
 
   const revenueChange =
@@ -552,7 +661,7 @@ export default function OwnerDashboard() {
           <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
 
           <p className="mt-4 text-sm text-white/40">
-            Loading dashboard...
+            Checking owner access...
           </p>
         </div>
       </div>
@@ -565,7 +674,7 @@ export default function OwnerDashboard() {
 
   if (error && !restaurant) {
     return (
-      <div className="mx-auto flex min-h-[70vh] max-w-3xl items-center justify-center">
+      <div className="mx-auto flex min-h-[70vh] max-w-3xl items-center justify-center px-6">
         <div className="w-full rounded-2xl border border-red-500/20 bg-red-500/[0.04] p-6 text-center">
           <h2 className="text-lg font-semibold text-red-300">
             Dashboard unavailable
@@ -575,12 +684,21 @@ export default function OwnerDashboard() {
             {error}
           </p>
 
-          <button
-            onClick={loadDashboard}
-            className="mt-5 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black"
-          >
-            Try Again
-          </button>
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
+            <button
+              onClick={loadDashboard}
+              className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black"
+            >
+              Try Again
+            </button>
+
+            <Link
+              href="/account"
+              className="rounded-xl border border-white/10 px-5 py-3 text-sm text-white/70"
+            >
+              My Account
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -606,7 +724,7 @@ export default function OwnerDashboard() {
 
       <div className="mb-10">
         <div className="mb-3 text-xs uppercase tracking-[0.3em] text-white/35">
-          Overview
+          Owner Dashboard
         </div>
 
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -615,7 +733,8 @@ export default function OwnerDashboard() {
 
         <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">
           Here is what is happening with{" "}
-          {restaurant?.name || "your restaurant"} today.
+          {restaurant?.name || "your restaurant"}{" "}
+          today.
         </p>
       </div>
 
@@ -637,7 +756,8 @@ export default function OwnerDashboard() {
 
           <div
             className={`mt-3 text-xs ${
-              revenueChange !== null && revenueChange >= 0
+              revenueChange !== null &&
+              revenueChange >= 0
                 ? "text-green-400"
                 : "text-red-400"
             }`}
@@ -645,7 +765,9 @@ export default function OwnerDashboard() {
             {revenueChange === null
               ? "No previous-day data"
               : `${
-                  revenueChange >= 0 ? "+" : ""
+                  revenueChange >= 0
+                    ? "+"
+                    : ""
                 }${revenueChange.toFixed(
                   1
                 )}% from yesterday`}

@@ -3,106 +3,84 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-export default function RegisterPage() {
+export default function LoginPage() {
   const router = useRouter();
 
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
-
   const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState("");
 
   // ============================================================
-  // CUSTOMER REGISTER
+  // CHECK EXISTING SESSION
   // ============================================================
 
-  async function handleSubmit(
-    e: FormEvent<HTMLFormElement>
-  ) {
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkSession() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          router.replace("/account");
+          return;
+        }
+      } catch (err) {
+        console.error("Session check error:", err);
+      } finally {
+        if (mounted) {
+          setCheckingSession(false);
+        }
+      }
+    }
+
+    checkSession();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
+
+  // ============================================================
+  // CUSTOMER LOGIN
+  // ============================================================
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     setError("");
 
     const form = new FormData(e.currentTarget);
 
-    const name = String(
-      form.get("name") || ""
-    ).trim();
-
-    const email = String(
-      form.get("email") || ""
-    )
+    const email = String(form.get("email") || "")
       .trim()
       .toLowerCase();
 
-    const phone = String(
-      form.get("phone") || ""
-    ).trim();
-
-    const password = String(
-      form.get("password") || ""
-    );
-
-    const confirmPassword = String(
-      form.get("confirmPassword") || ""
-    );
-
-    const termsAccepted =
-      form.get("terms") === "on";
+    const password = String(form.get("password") || "");
 
     // ==========================================================
     // VALIDATION
     // ==========================================================
-
-    if (!name) {
-      setError("Please enter your full name.");
-      return;
-    }
-
-    if (name.length < 2) {
-      setError("Please enter a valid full name.");
-      return;
-    }
 
     if (!email) {
       setError("Please enter your email address.");
       return;
     }
 
-    if (!phone) {
-      setError("Please enter your phone number.");
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setError("Please enter a valid email address.");
       return;
     }
 
-    const cleanPhone = phone.replace(/\D/g, "");
-
-    if (cleanPhone.length < 10) {
-      setError("Please enter a valid phone number.");
-      return;
-    }
-
-    if (password.length < 8) {
-      setError(
-        "Password must be at least 8 characters long."
-      );
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    if (!termsAccepted) {
-      setError(
-        "Please accept the Terms & Conditions and Privacy Policy."
-      );
+    if (!password) {
+      setError("Please enter your password.");
       return;
     }
 
@@ -110,55 +88,35 @@ export default function RegisterPage() {
       setLoading(true);
 
       // ========================================================
-      // SUPABASE AUTH
+      // SUPABASE AUTHENTICATION
       // ========================================================
 
       const {
         data,
-        error: signUpError,
-      } = await supabase.auth.signUp({
+        error: signInError,
+      } = await supabase.auth.signInWithPassword({
         email,
         password,
-
-        options: {
-          data: {
-            full_name: name,
-            phone,
-            role: "customer",
-          },
-        },
       });
 
-      if (signUpError) {
-        throw signUpError;
+      if (signInError) {
+        throw signInError;
       }
 
       if (!data.user) {
         throw new Error(
-          "Unable to create your account. Please try again."
+          "Unable to sign in. Please try again."
         );
       }
 
-      /*
-        IMPORTANT:
+      // ========================================================
+      // LOGIN SUCCESS
+      // ========================================================
 
-        We don't insert into profiles here.
-
-        Existing database trigger should handle:
-
-        auth.users
-             ↓
-        profiles
-             ↓
-        role = customer
-      */
-
-      setSubmitted(true);
+      router.replace("/account");
+      router.refresh();
     } catch (err) {
-      console.error(
-        "Customer registration error:",
-        err
-      );
+      console.error("Customer login error:", err);
 
       let message =
         "Something went wrong. Please try again.";
@@ -167,34 +125,25 @@ export default function RegisterPage() {
         message = err.message;
       }
 
-      const lowerMessage =
-        message.toLowerCase();
+      const lowerMessage = message.toLowerCase();
 
       if (
-        lowerMessage.includes(
-          "user already registered"
-        ) ||
-        lowerMessage.includes(
-          "already registered"
-        )
+        lowerMessage.includes("invalid login credentials") ||
+        lowerMessage.includes("invalid credentials")
       ) {
         message =
-          "An account with this email already exists. Please sign in.";
-      }
-
-      if (
-        lowerMessage.includes("rate limit") ||
-        lowerMessage.includes(
-          "too many requests"
-        )
+          "Incorrect email or password. Please try again.";
+      } else if (
+        lowerMessage.includes("email not confirmed")
       ) {
         message =
-          "Too many signup attempts. Please wait a little and try again.";
-      }
-
-      if (lowerMessage.includes("password")) {
+          "Please confirm your email address before signing in.";
+      } else if (
+        lowerMessage.includes("too many requests") ||
+        lowerMessage.includes("rate limit")
+      ) {
         message =
-          "Please use a stronger password with at least 8 characters.";
+          "Too many login attempts. Please wait a little and try again.";
       }
 
       setError(message);
@@ -204,10 +153,10 @@ export default function RegisterPage() {
   }
 
   // ============================================================
-  // GOOGLE
+  // GOOGLE LOGIN
   // ============================================================
 
-  async function handleGoogleSignup() {
+  async function handleGoogleLogin() {
     setError("");
 
     try {
@@ -217,7 +166,6 @@ export default function RegisterPage() {
         error: googleError,
       } = await supabase.auth.signInWithOAuth({
         provider: "google",
-
         options: {
           redirectTo:
             `${window.location.origin}/auth/callback`,
@@ -228,13 +176,10 @@ export default function RegisterPage() {
         throw googleError;
       }
     } catch (err) {
-      console.error(
-        "Google signup error:",
-        err
-      );
+      console.error("Google login error:", err);
 
       setError(
-        "Google sign-in is not configured yet."
+        "Google sign-in is not configured yet. Please use email and password."
       );
 
       setLoading(false);
@@ -242,70 +187,25 @@ export default function RegisterPage() {
   }
 
   // ============================================================
-  // SUCCESS
+  // SESSION CHECK SCREEN
   // ============================================================
 
-  if (submitted) {
+  if (checkingSession) {
     return (
       <main className="min-h-screen bg-black text-white">
-
         <Navbar />
 
-        <section className="min-h-screen border-b border-white/10 pt-24">
+        <section className="flex min-h-[70vh] items-center justify-center px-6 pt-24">
+          <div className="flex flex-col items-center text-center">
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-[#c9a45c]" />
 
-          <div className="mx-auto flex min-h-[calc(100vh-96px)] max-w-7xl items-center justify-center px-6 py-20">
-
-            <div className="w-full max-w-xl text-center">
-
-              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-[#c9a45c]/40 bg-[#c9a45c]/10">
-                <span className="text-4xl text-[#c9a45c]">
-                  ✓
-                </span>
-              </div>
-
-              <p className="mt-10 text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
-                Welcome to AURA
-              </p>
-
-              <h1 className="mt-5 text-4xl font-light tracking-tight sm:text-5xl">
-                Your account is ready.
-              </h1>
-
-              <p className="mx-auto mt-6 max-w-lg text-sm leading-7 text-white/50">
-                Your AURA customer account has been
-                created successfully. You can now sign
-                in and manage your reservations, orders
-                and profile.
-              </p>
-
-              <div className="mx-auto mt-10 flex max-w-md flex-col gap-3">
-
-                <button
-                  onClick={() =>
-                    router.push("/login")
-                  }
-                  className="w-full rounded-full bg-[#c9a45c] px-6 py-4 text-sm font-medium text-black transition hover:bg-[#d8b873]"
-                >
-                  Sign In
-                </button>
-
-                <Link
-                  href="/"
-                  className="w-full rounded-full border border-white/10 px-6 py-4 text-sm text-white/70 transition hover:border-white/25 hover:text-white"
-                >
-                  Return to AURA
-                </Link>
-
-              </div>
-
-            </div>
-
+            <p className="mt-5 text-sm text-white/40">
+              Checking your session...
+            </p>
           </div>
-
         </section>
 
         <Footer />
-
       </main>
     );
   }
@@ -316,22 +216,20 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-
       <Navbar />
 
       <section className="min-h-screen border-b border-white/10 pt-24">
-
         <div className="mx-auto grid min-h-[calc(100vh-96px)] max-w-7xl lg:grid-cols-2">
 
           {/* ==================================================
-              LEFT
+              LEFT — BRAND EXPERIENCE
           ================================================== */}
 
           <div className="relative hidden overflow-hidden border-r border-white/10 lg:block">
 
             <img
               src="/images/signature-dish.png"
-              alt="AURA signature dish"
+              alt="Aarambh Restaurant signature dish"
               className="absolute inset-0 h-full w-full object-cover"
             />
 
@@ -342,40 +240,36 @@ export default function RegisterPage() {
             <div className="absolute bottom-0 left-0 right-0 p-12">
 
               <p className="mb-5 text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
-                Welcome to AURA
+                Welcome Back
               </p>
 
               <h1 className="max-w-xl text-5xl font-light leading-tight">
-
-                Your table.
+                Good food.
                 <br />
-
-                Your taste.
+                Good moments.
                 <br />
-
                 <span className="italic text-[#c9a45c]">
-                  Your AURA.
+                  Welcome back.
                 </span>
-
               </h1>
 
               <p className="mt-6 max-w-md text-sm leading-7 text-white/60">
-                Create your AURA account to make
-                reservations, manage orders and enjoy
-                a more personalized dining experience.
+                Sign in to manage your reservations,
+                orders and Aarambh customer account.
               </p>
 
             </div>
-
           </div>
 
           {/* ==================================================
-              RIGHT
+              RIGHT — LOGIN FORM
           ================================================== */}
 
           <div className="flex items-center px-6 py-16 sm:px-10 lg:px-16 xl:px-20">
 
             <div className="mx-auto w-full max-w-md">
+
+              {/* HEADER */}
 
               <div className="mb-10">
 
@@ -384,12 +278,12 @@ export default function RegisterPage() {
                 </p>
 
                 <h1 className="text-4xl font-light tracking-tight sm:text-5xl">
-                  Create account
+                  Welcome back
                 </h1>
 
                 <p className="mt-4 text-sm leading-6 text-white/50">
-                  Join AURA and make every dining
-                  experience more personal.
+                  Sign in to manage your Aarambh
+                  reservations, orders and profile.
                 </p>
 
               </div>
@@ -397,38 +291,20 @@ export default function RegisterPage() {
               {/* ERROR */}
 
               {error && (
-                <div className="mb-6 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm leading-6 text-red-300">
+                <div
+                  role="alert"
+                  className="mb-6 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm leading-6 text-red-300"
+                >
                   {error}
                 </div>
               )}
+
+              {/* LOGIN FORM */}
 
               <form
                 onSubmit={handleSubmit}
                 className="space-y-5"
               >
-
-                {/* NAME */}
-
-                <div>
-
-                  <label
-                    htmlFor="name"
-                    className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/40"
-                  >
-                    Full Name
-                  </label>
-
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    autoComplete="name"
-                    required
-                    placeholder="Your full name"
-                    className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
-                  />
-
-                </div>
 
                 {/* EMAIL */}
 
@@ -447,31 +323,9 @@ export default function RegisterPage() {
                     type="email"
                     autoComplete="email"
                     required
+                    disabled={loading}
                     placeholder="you@example.com"
-                    className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
-                  />
-
-                </div>
-
-                {/* PHONE */}
-
-                <div>
-
-                  <label
-                    htmlFor="phone"
-                    className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/40"
-                  >
-                    Phone Number
-                  </label>
-
-                  <input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    required
-                    placeholder="+91 98765 43210"
-                    className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
+                    className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50 disabled:cursor-not-allowed disabled:opacity-60"
                   />
 
                 </div>
@@ -480,12 +334,23 @@ export default function RegisterPage() {
 
                 <div>
 
-                  <label
-                    htmlFor="password"
-                    className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/40"
-                  >
-                    Password
-                  </label>
+                  <div className="mb-2 flex items-center justify-between">
+
+                    <label
+                      htmlFor="password"
+                      className="block text-xs uppercase tracking-[0.2em] text-white/40"
+                    >
+                      Password
+                    </label>
+
+                    <Link
+                      href="/forgot-password"
+                      className="text-xs text-[#c9a45c] transition hover:text-[#d8b873]"
+                    >
+                      Forgot password?
+                    </Link>
+
+                  </div>
 
                   <div className="relative">
 
@@ -497,11 +362,11 @@ export default function RegisterPage() {
                           ? "text"
                           : "password"
                       }
-                      autoComplete="new-password"
+                      autoComplete="current-password"
                       required
-                      minLength={8}
-                      placeholder="Minimum 8 characters"
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 pr-16 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
+                      disabled={loading}
+                      placeholder="Your password"
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 pr-16 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50 disabled:cursor-not-allowed disabled:opacity-60"
                     />
 
                     <button
@@ -511,7 +376,13 @@ export default function RegisterPage() {
                           !showPassword
                         )
                       }
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 hover:text-[#c9a45c]"
+                      disabled={loading}
+                      aria-label={
+                        showPassword
+                          ? "Hide password"
+                          : "Show password"
+                      }
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 transition hover:text-[#c9a45c] disabled:opacity-40"
                     >
                       {showPassword
                         ? "Hide"
@@ -522,88 +393,26 @@ export default function RegisterPage() {
 
                 </div>
 
-                {/* CONFIRM PASSWORD */}
+                {/* REMEMBER */}
 
-                <div>
-
-                  <label
-                    htmlFor="confirmPassword"
-                    className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/40"
-                  >
-                    Confirm Password
-                  </label>
-
-                  <div className="relative">
-
-                    <input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type={
-                        showConfirmPassword
-                          ? "text"
-                          : "password"
-                      }
-                      autoComplete="new-password"
-                      required
-                      minLength={8}
-                      placeholder="Re-enter your password"
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 pr-16 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowConfirmPassword(
-                          !showConfirmPassword
-                        )
-                      }
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 hover:text-[#c9a45c]"
-                    >
-                      {showConfirmPassword
-                        ? "Hide"
-                        : "Show"}
-                    </button>
-
-                  </div>
-
-                </div>
-
-                {/* TERMS */}
-
-                <label className="flex cursor-pointer items-start gap-3 pt-1">
+                <div className="flex items-center gap-3 pt-1">
 
                   <input
+                    id="remember"
+                    name="remember"
                     type="checkbox"
-                    name="terms"
-                    required
-                    className="mt-1 h-4 w-4 accent-[#c9a45c]"
+                    disabled={loading}
+                    className="h-4 w-4 rounded border-white/20 bg-white/5 accent-[#c9a45c]"
                   />
 
-                  <span className="text-xs leading-5 text-white/45">
+                  <label
+                    htmlFor="remember"
+                    className="cursor-pointer text-xs text-white/40"
+                  >
+                    Keep me signed in
+                  </label>
 
-                    I agree to the{" "}
-
-                    <Link
-                      href="/terms"
-                      className="text-white hover:text-[#c9a45c]"
-                    >
-                      Terms & Conditions
-                    </Link>
-
-                    {" "}and{" "}
-
-                    <Link
-                      href="/privacy"
-                      className="text-white hover:text-[#c9a45c]"
-                    >
-                      Privacy Policy
-                    </Link>
-
-                    .
-
-                  </span>
-
-                </label>
+                </div>
 
                 {/* SUBMIT */}
 
@@ -612,23 +421,19 @@ export default function RegisterPage() {
                   disabled={loading}
                   className="flex w-full items-center justify-center gap-3 rounded-full bg-[#c9a45c] py-4 text-sm font-medium text-black transition hover:bg-[#d8b873] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-
                   {loading ? (
                     <>
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
 
-                      Creating account...
+                      Signing in...
                     </>
                   ) : (
                     <>
-                      Create Account
+                      Sign In
 
-                      <span>
-                        →
-                      </span>
+                      <span>→</span>
                     </>
                   )}
-
                 </button>
 
               </form>
@@ -651,12 +456,15 @@ export default function RegisterPage() {
 
               <button
                 type="button"
-                onClick={handleGoogleSignup}
+                onClick={handleGoogleLogin}
                 disabled={loading}
                 className="flex w-full items-center justify-center gap-3 rounded-full border border-white/10 bg-white/[0.02] py-4 text-sm text-white/60 transition hover:border-white/25 hover:bg-white/[0.05] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
 
-                <span className="text-base font-medium">
+                <span
+                  aria-hidden="true"
+                  className="text-base font-medium"
+                >
                   G
                 </span>
 
@@ -664,17 +472,17 @@ export default function RegisterPage() {
 
               </button>
 
-              {/* LOGIN */}
+              {/* REGISTER */}
 
               <p className="mt-8 text-center text-sm text-white/35">
 
-                Already have an account?{" "}
+                Don't have an account?{" "}
 
                 <Link
-                  href="/login"
-                  className="text-[#c9a45c] hover:text-[#d8b873]"
+                  href="/register"
+                  className="text-[#c9a45c] transition hover:text-[#d8b873]"
                 >
-                  Sign in
+                  Create account
                 </Link>
 
               </p>
@@ -688,33 +496,32 @@ export default function RegisterPage() {
                 </p>
 
                 <Link
-                  href="/owner/register"
-                  className="mt-2 inline-block text-sm text-[#c9a45c] hover:text-[#d8b873]"
+                  href="/owner/login"
+                  className="mt-2 inline-block text-sm text-[#c9a45c] transition hover:text-[#d8b873]"
                 >
-                  Create Restaurant Owner Account →
+                  Owner Sign In →
                 </Link>
 
               </div>
 
+              {/* SECURITY NOTE */}
+
               <div className="mt-10 border-t border-white/10 pt-6 text-center">
 
                 <p className="text-xs leading-5 text-white/30">
-                  Your account information is kept
-                  private and securely stored.
+                  Your account information is securely
+                  stored and protected.
                 </p>
 
               </div>
 
             </div>
-
           </div>
 
         </div>
-
       </section>
 
       <Footer />
-
     </main>
   );
 }

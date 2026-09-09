@@ -2,15 +2,57 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { supabase } from "@/lib/supabase";
 
 export default function ForgotPasswordPage() {
   const [submitted, setSubmitted] = useState(false);
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setSubmitted(true);
+
+    setError("");
+    setLoading(true);
+
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+
+      if (!normalizedEmail) {
+        setError("Please enter your email address.");
+        return;
+      }
+
+      const redirectTo = `${window.location.origin}/reset-password`;
+
+      const { error: resetError } =
+        await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo,
+        });
+
+      if (resetError) {
+        console.error("Password reset error:", resetError);
+        setError(
+          resetError.message ||
+            "Unable to send the password reset email. Please try again."
+        );
+        return;
+      }
+
+      setSubmitted(true);
+    } catch (err) {
+      console.error("Unexpected password reset error:", err);
+
+      setError(
+        "Something went wrong. Please check your internet connection and try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -27,7 +69,7 @@ export default function ForgotPasswordPage() {
           <div className="relative hidden overflow-hidden border-r border-white/10 lg:block">
             <img
               src="/images/signature-dish.png"
-              alt="AURA dining experience"
+              alt="Aarambh Restaurant dining experience"
               className="absolute inset-0 h-full w-full object-cover"
             />
 
@@ -36,7 +78,7 @@ export default function ForgotPasswordPage() {
 
             <div className="absolute bottom-0 left-0 right-0 p-12">
               <p className="mb-5 text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
-                AURA Customer Account
+                Aarambh Customer Account
               </p>
 
               <h1 className="max-w-xl text-5xl font-light leading-tight">
@@ -45,7 +87,7 @@ export default function ForgotPasswordPage() {
                 back to
                 <br />
                 <span className="italic text-[#c9a45c]">
-                  AURA.
+                  Aarambh.
                 </span>
               </h1>
 
@@ -78,7 +120,7 @@ export default function ForgotPasswordPage() {
 
                     <p className="mt-4 text-sm leading-6 text-white/50">
                       Enter the email address connected to your
-                      AURA account and we&apos;ll send you a
+                      Aarambh account and we&apos;ll send you a
                       password reset link.
                     </p>
                   </div>
@@ -101,21 +143,49 @@ export default function ForgotPasswordPage() {
                         id="email"
                         name="email"
                         type="email"
+                        autoComplete="email"
                         required
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          if (error) setError("");
+                        }}
                         placeholder="you@example.com"
-                        className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c]"
+                        disabled={loading}
+                        className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-50"
                       />
                     </div>
 
+                    {/* Error */}
+
+                    {error && (
+                      <div
+                        role="alert"
+                        className="border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-300"
+                      >
+                        {error}
+                      </div>
+                    )}
+
                     <button
                       type="submit"
-                      className="group flex w-full items-center justify-center gap-3 bg-[#c9a45c] px-6 py-4 text-sm font-medium text-black transition hover:bg-[#dfbd72]"
+                      disabled={loading}
+                      className="group flex w-full items-center justify-center gap-3 bg-[#c9a45c] px-6 py-4 text-sm font-medium text-black transition hover:bg-[#dfbd72] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Send Reset Link
+                      {loading ? (
+                        <>
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          Send Reset Link
 
-                      <span className="transition-transform group-hover:translate-x-1">
-                        →
-                      </span>
+                          <span className="transition-transform group-hover:translate-x-1">
+                            →
+                          </span>
+                        </>
+                      )}
                     </button>
                   </form>
 
@@ -176,16 +246,19 @@ export default function ForgotPasswordPage() {
 
                     <button
                       type="button"
-                      onClick={() => setSubmitted(false)}
+                      onClick={() => {
+                        setSubmitted(false);
+                        setError("");
+                      }}
                       className="w-full border border-white/10 px-6 py-4 text-sm text-white/70 transition hover:border-white/25 hover:text-white"
                     >
                       Try Another Email
                     </button>
                   </div>
 
-                  <p className="mt-8 text-xs text-white/30">
-                    Demo mode — real email delivery and password
-                    reset functionality can be connected later.
+                  <p className="mt-8 text-xs leading-5 text-white/30">
+                    Check your inbox and open the password reset
+                    link to create a new password.
                   </p>
                 </div>
               )}

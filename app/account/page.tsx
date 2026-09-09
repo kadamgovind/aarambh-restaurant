@@ -58,172 +58,204 @@ export default function ProfilePage() {
   */
 
   useEffect(() => {
-    loadAccount();
-  }, []);
+    let mounted = true;
 
-  async function loadAccount() {
-    try {
-      setLoading(true);
-      setError("");
+    async function loadAccount() {
+      try {
+        setLoading(true);
+        setError("");
 
-      /*
-      ----------------------------------------------------------
-      CURRENT USER
-      ----------------------------------------------------------
-      */
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        throw userError;
-      }
-
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-
-      setEmail(user.email || "");
-
-      /*
-      ----------------------------------------------------------
-      PROFILE
-      ----------------------------------------------------------
-      */
-
-      const { data: profileData, error: profileError } =
-        await supabase
-          .from("profiles")
-          .select("id, full_name, phone, role")
-          .eq("id", user.id)
-          .maybeSingle();
-
-      if (profileError) {
-        throw profileError;
-      }
-
-      let currentProfile: Profile;
-
-      /*
-      ----------------------------------------------------------
-      PROFILE DOES NOT EXIST
-      ----------------------------------------------------------
-      */
-
-      if (!profileData) {
-        const newProfile = {
-          id: user.id,
-          full_name: user.user_metadata?.full_name || "",
-          phone: user.user_metadata?.phone || "",
-          role: "customer",
-        };
+        /*
+        --------------------------------------------------------
+        CURRENT USER
+        --------------------------------------------------------
+        */
 
         const {
-          data: createdProfile,
-          error: createError,
-        } = await supabase
-          .from("profiles")
-          .upsert(newProfile, {
-            onConflict: "id",
-          })
-          .select("id, full_name, phone, role")
-          .single();
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
 
-        if (createError) {
-          throw createError;
+        if (userError) {
+          throw userError;
         }
 
-        currentProfile = createdProfile;
-      } else {
-        currentProfile = profileData;
-      }
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
 
-      /*
-      ----------------------------------------------------------
-      OWNER REDIRECT
-      ----------------------------------------------------------
-      */
+        if (!mounted) return;
 
-      if (currentProfile.role === "owner") {
-        router.replace("/owner");
-        return;
-      }
+        setEmail(user.email || "");
 
-      setProfile(currentProfile);
+        /*
+        --------------------------------------------------------
+        PROFILE
+        --------------------------------------------------------
+        */
 
-      setFullName(currentProfile.full_name || "");
-      setPhone(currentProfile.phone || "");
+        const { data: profileData, error: profileError } =
+          await supabase
+            .from("profiles")
+            .select("id, full_name, phone, role")
+            .eq("id", user.id)
+            .maybeSingle();
 
-      /*
-      ==========================================================
-      RESERVATIONS
-      ==========================================================
-      */
+        if (profileError) {
+          throw profileError;
+        }
 
-      const {
-        data: reservationData,
-        error: reservationError,
-      } = await supabase
-        .from("reservations")
-        .select(
-          "id, booking_date, booking_time, guests, status"
-        )
-        .eq("customer_id", user.id)
-        .order("booking_date", {
-          ascending: false,
-        });
+        let currentProfile: Profile;
 
-      if (reservationError) {
-        console.error(
-          "Reservation loading error:",
-          reservationError.message
-        );
+        /*
+        --------------------------------------------------------
+        CREATE PROFILE IF MISSING
+        --------------------------------------------------------
+        */
 
-        setReservations([]);
-      } else {
-        setReservations(reservationData || []);
-      }
+        if (!profileData) {
+          const newProfile = {
+            id: user.id,
+            full_name: user.user_metadata?.full_name || "",
+            phone: user.user_metadata?.phone || "",
+            role: "customer",
+          };
 
-      /*
-      ==========================================================
-      ORDERS
-      ==========================================================
-      */
+          const {
+            data: createdProfile,
+            error: createError,
+          } = await supabase
+            .from("profiles")
+            .insert(newProfile)
+            .select("id, full_name, phone, role")
+            .single();
 
-      const { data: orderData, error: orderError } =
-        await supabase
-          .from("orders")
-          .select("id, total, status, created_at")
+          if (createError) {
+            /*
+             * A concurrent profile creation can happen during
+             * registration/session initialization.
+             * In that case, try reading the existing profile.
+             */
+            const { data: existingProfile, error: retryError } =
+              await supabase
+                .from("profiles")
+                .select("id, full_name, phone, role")
+                .eq("id", user.id)
+                .maybeSingle();
+
+            if (retryError || !existingProfile) {
+              throw createError;
+            }
+
+            currentProfile = existingProfile;
+          } else {
+            currentProfile = createdProfile;
+          }
+        } else {
+          currentProfile = profileData;
+        }
+
+        if (!mounted) return;
+
+        /*
+        --------------------------------------------------------
+        OWNER REDIRECT
+        --------------------------------------------------------
+        */
+
+        if (currentProfile.role?.toLowerCase() === "owner") {
+          router.replace("/owner");
+          return;
+        }
+
+        setProfile(currentProfile);
+
+        setFullName(currentProfile.full_name || "");
+        setPhone(currentProfile.phone || "");
+
+        /*
+        ========================================================
+        RESERVATIONS
+        ========================================================
+        */
+
+        const {
+          data: reservationData,
+          error: reservationError,
+        } = await supabase
+          .from("reservations")
+          .select(
+            "id, booking_date, booking_time, guests, status"
+          )
           .eq("customer_id", user.id)
-          .order("created_at", {
+          .order("booking_date", {
             ascending: false,
           });
 
-      if (orderError) {
-        console.error(
-          "Order loading error:",
-          orderError.message
-        );
+        if (reservationError) {
+          console.error(
+            "Reservation loading error:",
+            reservationError.message
+          );
 
-        setOrders([]);
-      } else {
-        setOrders(orderData || []);
-      }
-    } catch (err) {
-      console.error("Account loading error:", err);
+          if (mounted) {
+            setReservations([]);
+          }
+        } else if (mounted) {
+          setReservations(reservationData || []);
+        }
 
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Unable to load your account.");
+        /*
+        ========================================================
+        ORDERS
+        ========================================================
+        */
+
+        const { data: orderData, error: orderError } =
+          await supabase
+            .from("orders")
+            .select("id, total, status, created_at")
+            .eq("customer_id", user.id)
+            .order("created_at", {
+              ascending: false,
+            });
+
+        if (orderError) {
+          console.error(
+            "Order loading error:",
+            orderError.message
+          );
+
+          if (mounted) {
+            setOrders([]);
+          }
+        } else if (mounted) {
+          setOrders(orderData || []);
+        }
+      } catch (err) {
+        console.error("Account loading error:", err);
+
+        if (!mounted) return;
+
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError("Unable to load your account.");
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
-    } finally {
-      setLoading(false);
     }
-  }
+
+    loadAccount();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
   /*
   ============================================================
@@ -259,20 +291,19 @@ export default function ProfilePage() {
         return;
       }
 
+      /*
+       * Do not allow the browser to decide/change the user's role.
+       * The existing role remains untouched by updating only
+       * customer-editable fields.
+       */
       const { data: updatedProfile, error: updateError } =
         await supabase
           .from("profiles")
-          .upsert(
-            {
-              id: user.id,
-              full_name: cleanName,
-              phone: cleanPhone,
-              role: profile?.role || "customer",
-            },
-            {
-              onConflict: "id",
-            }
-          )
+          .update({
+            full_name: cleanName,
+            phone: cleanPhone,
+          })
+          .eq("id", user.id)
           .select("id, full_name, phone, role")
           .single();
 
@@ -419,7 +450,9 @@ export default function ProfilePage() {
 
   const upcomingReservations = reservations.filter(
     (reservation) => {
-      if (reservation.status?.toLowerCase() === "cancelled") {
+      if (
+        reservation.status?.toLowerCase() === "cancelled"
+      ) {
         return false;
       }
 
@@ -465,8 +498,7 @@ export default function ProfilePage() {
 
               <p className="mt-5 max-w-xl text-sm leading-7 text-white/50">
                 Manage your profile, reservations,
-                orders and AURA dining preferences
-                from one place.
+                orders and dining preferences from one place.
               </p>
             </div>
 
@@ -500,7 +532,7 @@ export default function ProfilePage() {
                 </p>
 
                 <p className="mt-1 text-xs text-white/40">
-                  AURA Guest
+                  Aarambh Guest
                 </p>
               </div>
             </div>
@@ -532,7 +564,7 @@ export default function ProfilePage() {
                 href="/"
                 className="block px-4 py-3 text-sm text-white/40 transition hover:text-white"
               >
-                ← Back to AURA
+                ← Back to Aarambh
               </Link>
 
               <button
@@ -569,11 +601,11 @@ export default function ProfilePage() {
                   </p>
 
                   <h2 className="mt-3 text-3xl font-light">
-                    Your AURA account
+                    Your Aarambh account
                   </h2>
                 </div>
 
-                <div className="grid gap-px border border-white/10 bg-white/10 sm:grid-cols-3">
+                <div className="grid gap-px border border-white/10 bg-white/10 sm:grid-cols-2">
                   <div className="bg-black p-6">
                     <p className="text-xs uppercase tracking-[0.2em] text-white/35">
                       Reservations
@@ -605,20 +637,6 @@ export default function ProfilePage() {
 
                     <p className="mt-2 text-xs text-white/35">
                       Orders placed
-                    </p>
-                  </div>
-
-                  <div className="bg-black p-6">
-                    <p className="text-xs uppercase tracking-[0.2em] text-white/35">
-                      AURA Points
-                    </p>
-
-                    <p className="mt-4 text-3xl font-light text-[#c9a45c]">
-                      0
-                    </p>
-
-                    <p className="mt-2 text-xs text-white/35">
-                      Available rewards
                     </p>
                   </div>
                 </div>
@@ -710,7 +728,7 @@ export default function ProfilePage() {
                   ) : (
                     <div className="border border-white/10 bg-white/[0.02] p-8">
                       <p className="text-sm text-white/50">
-                        You don't have any upcoming
+                        You don&apos;t have any upcoming
                         reservations.
                       </p>
 
@@ -758,7 +776,7 @@ export default function ProfilePage() {
                       </h3>
 
                       <p className="mt-2 text-xs leading-5 text-white/35">
-                        Get AURA delivered.
+                        Order your favourites.
                       </p>
                     </Link>
 
@@ -769,11 +787,11 @@ export default function ProfilePage() {
                       <span className="text-2xl">◇</span>
 
                       <h3 className="mt-5 text-lg font-light">
-                        Explore AURA
+                        Explore Aarambh
                       </h3>
 
                       <p className="mt-2 text-xs leading-5 text-white/35">
-                        See our dining experience.
+                        Discover our dining experience.
                       </p>
                     </Link>
                   </div>
@@ -835,7 +853,7 @@ export default function ProfilePage() {
 
                     <p className="mt-2 text-xs text-white/25">
                       Email is managed through your secure
-                      AURA account.
+                      Aarambh account.
                     </p>
                   </div>
 
@@ -1057,37 +1075,22 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between border border-white/10 p-5">
-                    <div>
-                      <p className="text-sm">
-                        Email Notifications
-                      </p>
+                  <div className="border border-white/10 p-5">
+                    <p className="text-sm">
+                      Password & Security
+                    </p>
 
-                      <p className="mt-1 text-xs text-white/35">
-                        Receive reservation and order
-                        updates.
-                      </p>
-                    </div>
+                    <p className="mt-1 text-xs leading-5 text-white/35">
+                      Change your password using the secure
+                      account recovery flow.
+                    </p>
 
-                    <div className="h-6 w-11 rounded-full bg-[#c9a45c] p-1">
-                      <div className="ml-auto h-4 w-4 rounded-full bg-black" />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between border border-white/10 p-5">
-                    <div>
-                      <p className="text-sm">
-                        Special Offers
-                      </p>
-
-                      <p className="mt-1 text-xs text-white/35">
-                        Receive exclusive AURA experiences.
-                      </p>
-                    </div>
-
-                    <div className="h-6 w-11 rounded-full bg-[#c9a45c] p-1">
-                      <div className="ml-auto h-4 w-4 rounded-full bg-black" />
-                    </div>
+                    <Link
+                      href="/forgot-password"
+                      className="mt-5 inline-flex border border-white/10 px-4 py-3 text-xs text-white/60 transition hover:border-[#c9a45c]/40 hover:text-[#c9a45c]"
+                    >
+                      Change Password →
+                    </Link>
                   </div>
 
                   <div className="border border-red-400/10 p-5">
@@ -1095,21 +1098,11 @@ export default function ProfilePage() {
                       Danger Zone
                     </p>
 
-                    <p className="mt-1 text-xs text-white/35">
-                      Permanently delete your customer
-                      account.
+                    <p className="mt-1 text-xs leading-5 text-white/35">
+                      Account deletion requires a secure
+                      server-side implementation and is not
+                      enabled yet.
                     </p>
-
-                    <button
-                      onClick={() =>
-                        alert(
-                          "Account deletion will be connected through a secure server-side action."
-                        )
-                      }
-                      className="mt-5 border border-red-400/20 px-4 py-3 text-xs text-red-300 transition hover:bg-red-400/5"
-                    >
-                      Delete Account
-                    </button>
                   </div>
                 </div>
               </div>
