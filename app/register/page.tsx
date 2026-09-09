@@ -27,6 +27,7 @@ export default function RegisterPage() {
     const form = new FormData(e.currentTarget);
 
     const name = String(form.get("name") || "").trim();
+
     const email = String(form.get("email") || "")
       .trim()
       .toLowerCase();
@@ -34,15 +35,16 @@ export default function RegisterPage() {
     const phone = String(form.get("phone") || "").trim();
 
     const password = String(form.get("password") || "");
+
     const confirmPassword = String(
       form.get("confirmPassword") || ""
     );
 
     const termsAccepted = form.get("terms") === "on";
 
-    // =========================
+    // -----------------------------
     // VALIDATION
-    // =========================
+    // -----------------------------
 
     if (!name) {
       setError("Please enter your full name.");
@@ -64,7 +66,7 @@ export default function RegisterPage() {
       return;
     }
 
-    // Basic Indian phone validation
+    // Keep only digits for database storage.
     const cleanPhone = phone.replace(/\D/g, "");
 
     if (cleanPhone.length < 10) {
@@ -91,12 +93,12 @@ export default function RegisterPage() {
       return;
     }
 
+    // -----------------------------
+    // SUPABASE SIGNUP
+    // -----------------------------
+
     try {
       setLoading(true);
-
-      // =========================
-      // SUPABASE AUTH SIGNUP
-      // =========================
 
       const { data, error: signUpError } =
         await supabase.auth.signUp({
@@ -106,8 +108,7 @@ export default function RegisterPage() {
           options: {
             data: {
               full_name: name,
-              phone: phone,
-              role: "customer",
+              phone: cleanPhone,
             },
           },
         });
@@ -123,17 +124,25 @@ export default function RegisterPage() {
       }
 
       /*
-        IMPORTANT:
+        SECURITY:
 
-        We don't manually insert into profiles here.
+        We intentionally DO NOT send:
 
-        Your database trigger should create:
+        role: "customer"
+
+        The database trigger handles this securely:
 
         auth.users
+             ↓
+        handle_new_user()
              ↓
         profiles
              ↓
         role = customer
+
+        This prevents users from choosing:
+        owner/admin
+        from the frontend.
       */
 
       setSubmitted(true);
@@ -176,9 +185,9 @@ export default function RegisterPage() {
     }
   }
 
-  // =========================
+  // -----------------------------
   // GOOGLE SIGNUP
-  // =========================
+  // -----------------------------
 
   async function handleGoogleSignup() {
     setError("");
@@ -186,7 +195,7 @@ export default function RegisterPage() {
     try {
       setLoading(true);
 
-      const { error } =
+      const { error: googleError } =
         await supabase.auth.signInWithOAuth({
           provider: "google",
 
@@ -196,8 +205,8 @@ export default function RegisterPage() {
           },
         });
 
-      if (error) {
-        throw error;
+      if (googleError) {
+        throw googleError;
       }
     } catch (err) {
       console.error("Google signup error:", err);
@@ -210,9 +219,9 @@ export default function RegisterPage() {
     }
   }
 
-  // =========================
-  // SUCCESS
-  // =========================
+  // -----------------------------
+  // SUCCESS SCREEN
+  // -----------------------------
 
   if (submitted) {
     return (
@@ -223,6 +232,7 @@ export default function RegisterPage() {
           <div className="mx-auto flex min-h-[calc(100vh-96px)] max-w-7xl items-center justify-center px-6 py-20">
             <div className="w-full max-w-xl text-center">
 
+              {/* Success Icon */}
               <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-[#c9a45c]/40 bg-[#c9a45c]/10">
                 <span className="text-4xl text-[#c9a45c]">
                   ✓
@@ -230,7 +240,7 @@ export default function RegisterPage() {
               </div>
 
               <p className="mt-10 text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
-                Welcome to AURA
+                Welcome to Aarambh Restaurant
               </p>
 
               <h1 className="mt-5 text-4xl font-light tracking-tight sm:text-5xl">
@@ -238,14 +248,16 @@ export default function RegisterPage() {
               </h1>
 
               <p className="mx-auto mt-6 max-w-lg text-sm leading-7 text-white/50">
-                Your AURA customer account has been
-                created successfully. You can now sign
-                in and manage your reservations, orders
-                and profile.
+                Your Aarambh Restaurant customer account
+                has been created successfully. You can
+                now sign in and manage your reservations,
+                orders and profile.
               </p>
 
               <div className="mx-auto mt-10 flex max-w-md flex-col gap-3">
+
                 <button
+                  type="button"
                   onClick={() => router.push("/login")}
                   className="w-full bg-[#c9a45c] px-6 py-4 text-sm font-medium text-black transition hover:bg-[#dfbd72]"
                 >
@@ -256,14 +268,16 @@ export default function RegisterPage() {
                   href="/"
                   className="w-full border border-white/10 px-6 py-4 text-sm text-white/70 transition hover:border-white/25 hover:text-white"
                 >
-                  Return to AURA
+                  Return to Aarambh Restaurant
                 </Link>
+
               </div>
 
               <p className="mt-10 text-xs leading-5 text-white/25">
                 Your account information is securely
-                stored with AURA.
+                stored with Aarambh Restaurant.
               </p>
+
             </div>
           </div>
         </section>
@@ -273,24 +287,27 @@ export default function RegisterPage() {
     );
   }
 
-  // =========================
+  // -----------------------------
   // REGISTER PAGE
-  // =========================
+  // -----------------------------
 
   return (
     <main className="min-h-screen bg-black text-white">
       <Navbar />
 
       <section className="min-h-screen border-b border-white/10 pt-24">
+
         <div className="mx-auto grid min-h-[calc(100vh-96px)] max-w-7xl lg:grid-cols-2">
 
-          {/* LEFT */}
+          {/* -------------------------------- */}
+          {/* LEFT IMAGE / BRAND SECTION */}
+          {/* -------------------------------- */}
 
           <div className="relative hidden overflow-hidden border-r border-white/10 lg:block">
 
             <img
               src="/images/signature-dish.png"
-              alt="AURA signature dish"
+              alt="Aarambh Restaurant signature dish"
               className="absolute inset-0 h-full w-full object-cover"
             />
 
@@ -301,33 +318,42 @@ export default function RegisterPage() {
             <div className="absolute bottom-0 left-0 right-0 p-12">
 
               <p className="mb-5 text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
-                Welcome to AURA
+                Welcome to Aarambh
               </p>
 
               <h1 className="max-w-xl text-5xl font-light leading-tight">
+
                 Your table.
                 <br />
+
                 Your taste.
                 <br />
+
                 <span className="italic text-[#c9a45c]">
-                  Your AURA.
+                  Your Aarambh.
                 </span>
+
               </h1>
 
               <p className="mt-6 max-w-md text-sm leading-7 text-white/60">
-                Create your AURA account to make
-                reservations, manage orders and enjoy
-                a more personalized dining experience.
+                Create your Aarambh Restaurant account
+                to make reservations, manage orders and
+                enjoy a more personalized dining
+                experience.
               </p>
 
             </div>
           </div>
 
-          {/* RIGHT */}
+          {/* -------------------------------- */}
+          {/* RIGHT REGISTER FORM */}
+          {/* -------------------------------- */}
 
           <div className="flex items-center px-6 py-16 sm:px-10 lg:px-16 xl:px-20">
 
             <div className="mx-auto w-full max-w-md">
+
+              {/* Header */}
 
               <div className="mb-10">
 
@@ -340,26 +366,34 @@ export default function RegisterPage() {
                 </h2>
 
                 <p className="mt-4 text-sm leading-6 text-white/50">
-                  Join AURA and make every dining
-                  experience more personal.
+                  Join Aarambh Restaurant and make every
+                  dining experience more personal.
                 </p>
 
               </div>
 
+              {/* Error */}
+
               {error && (
-                <div className="mb-6 border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm leading-6 text-red-300">
+                <div
+                  role="alert"
+                  className="mb-6 border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm leading-6 text-red-300"
+                >
                   {error}
                 </div>
               )}
+
+              {/* Form */}
 
               <form
                 onSubmit={handleSubmit}
                 className="space-y-5"
               >
 
-                {/* NAME */}
+                {/* Full Name */}
 
                 <div>
+
                   <label
                     htmlFor="name"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -374,13 +408,16 @@ export default function RegisterPage() {
                     autoComplete="name"
                     required
                     placeholder="Your full name"
-                    className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c]"
+                    disabled={loading}
+                    className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
                   />
+
                 </div>
 
-                {/* EMAIL */}
+                {/* Email */}
 
                 <div>
+
                   <label
                     htmlFor="email"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -395,13 +432,16 @@ export default function RegisterPage() {
                     autoComplete="email"
                     required
                     placeholder="you@example.com"
-                    className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c]"
+                    disabled={loading}
+                    className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
                   />
+
                 </div>
 
-                {/* PHONE */}
+                {/* Phone */}
 
                 <div>
+
                   <label
                     htmlFor="phone"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -413,16 +453,20 @@ export default function RegisterPage() {
                     id="phone"
                     name="phone"
                     type="tel"
+                    inputMode="tel"
                     autoComplete="tel"
                     required
                     placeholder="+91 98765 43210"
-                    className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c]"
+                    disabled={loading}
+                    className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
                   />
+
                 </div>
 
-                {/* PASSWORD */}
+                {/* Password */}
 
                 <div>
+
                   <label
                     htmlFor="password"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -444,7 +488,8 @@ export default function RegisterPage() {
                       required
                       minLength={8}
                       placeholder="Minimum 8 characters"
-                      className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c]"
+                      disabled={loading}
+                      className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
                     />
 
                     <button
@@ -454,7 +499,8 @@ export default function RegisterPage() {
                           !showPassword
                         )
                       }
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 hover:text-[#c9a45c]"
+                      disabled={loading}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 hover:text-[#c9a45c] disabled:cursor-not-allowed"
                     >
                       {showPassword
                         ? "Hide"
@@ -464,9 +510,10 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                {/* CONFIRM */}
+                {/* Confirm Password */}
 
                 <div>
+
                   <label
                     htmlFor="confirmPassword"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -488,7 +535,8 @@ export default function RegisterPage() {
                       required
                       minLength={8}
                       placeholder="Re-enter your password"
-                      className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c]"
+                      disabled={loading}
+                      className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
                     />
 
                     <button
@@ -498,7 +546,8 @@ export default function RegisterPage() {
                           !showConfirmPassword
                         )
                       }
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 hover:text-[#c9a45c]"
+                      disabled={loading}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 hover:text-[#c9a45c] disabled:cursor-not-allowed"
                     >
                       {showConfirmPassword
                         ? "Hide"
@@ -508,7 +557,7 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                {/* TERMS */}
+                {/* Terms */}
 
                 <label className="flex cursor-pointer items-start gap-3 pt-1">
 
@@ -516,10 +565,12 @@ export default function RegisterPage() {
                     type="checkbox"
                     name="terms"
                     required
+                    disabled={loading}
                     className="mt-1 h-4 w-4 accent-[#c9a45c]"
                   />
 
                   <span className="text-xs leading-5 text-white/45">
+
                     I agree to the{" "}
 
                     <Link
@@ -539,11 +590,12 @@ export default function RegisterPage() {
                     </Link>
 
                     .
+
                   </span>
 
                 </label>
 
-                {/* SUBMIT */}
+                {/* Submit */}
 
                 <button
                   type="submit"
@@ -559,6 +611,7 @@ export default function RegisterPage() {
                   ) : (
                     <>
                       Create Account
+
                       <span className="transition-transform group-hover:translate-x-1">
                         →
                       </span>
@@ -569,7 +622,7 @@ export default function RegisterPage() {
 
               </form>
 
-              {/* DIVIDER */}
+              {/* Divider */}
 
               <div className="my-8 flex items-center gap-4">
 
@@ -583,7 +636,7 @@ export default function RegisterPage() {
 
               </div>
 
-              {/* GOOGLE */}
+              {/* Google */}
 
               <button
                 type="button"
@@ -591,14 +644,16 @@ export default function RegisterPage() {
                 disabled={loading}
                 className="flex w-full items-center justify-center gap-3 border border-white/10 bg-white/[0.02] px-6 py-4 text-sm text-white/80 transition hover:border-white/25 hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-50"
               >
+
                 <span className="text-base font-medium">
                   G
                 </span>
 
                 Continue with Google
+
               </button>
 
-              {/* LOGIN */}
+              {/* Login */}
 
               <p className="mt-8 text-center text-sm text-white/40">
 
@@ -613,7 +668,7 @@ export default function RegisterPage() {
 
               </p>
 
-              {/* OWNER LINK */}
+              {/* Owner */}
 
               <div className="mt-6 text-center">
 
@@ -630,6 +685,8 @@ export default function RegisterPage() {
 
               </div>
 
+              {/* Privacy */}
+
               <div className="mt-10 border-t border-white/10 pt-6 text-center">
 
                 <p className="text-xs leading-5 text-white/30">
@@ -641,7 +698,6 @@ export default function RegisterPage() {
 
             </div>
           </div>
-
         </div>
       </section>
 
