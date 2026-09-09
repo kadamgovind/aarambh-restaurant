@@ -52,7 +52,9 @@ export default function LoginPage() {
   // CUSTOMER LOGIN
   // ============================================================
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
 
     setError("");
@@ -63,7 +65,9 @@ export default function LoginPage() {
       .trim()
       .toLowerCase();
 
-    const password = String(form.get("password") || "");
+    const password = String(
+      form.get("password") || ""
+    );
 
     // ==========================================================
     // VALIDATION
@@ -110,11 +114,75 @@ export default function LoginPage() {
       }
 
       // ========================================================
-      // LOGIN SUCCESS
+      // VERIFY CUSTOMER PROFILE
       // ========================================================
 
-      router.replace("/account");
-      router.refresh();
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select("id, role")
+        .eq("id", data.user.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error(
+          "Profile verification error:",
+          profileError
+        );
+
+        await supabase.auth.signOut();
+
+        throw new Error(
+          "Unable to verify your account. Please try again."
+        );
+      }
+
+      if (!profile) {
+        await supabase.auth.signOut();
+
+        throw new Error(
+          "Your account profile could not be found. Please contact support."
+        );
+      }
+
+      // ========================================================
+      // CUSTOMER LOGIN
+      // ========================================================
+
+      if (profile.role === "customer") {
+        router.replace("/account");
+        router.refresh();
+        return;
+      }
+
+      // ========================================================
+      // OWNER / ADMIN PROTECTION
+      // ========================================================
+
+      if (
+        profile.role === "owner" ||
+        profile.role === "admin"
+      ) {
+        await supabase.auth.signOut();
+
+        setError(
+          "This is a restaurant management account. Please use the Owner Sign In page."
+        );
+
+        return;
+      }
+
+      // ========================================================
+      // UNKNOWN ROLE
+      // ========================================================
+
+      await supabase.auth.signOut();
+
+      throw new Error(
+        "Your account role could not be verified. Please contact support."
+      );
     } catch (err) {
       console.error("Customer login error:", err);
 
@@ -128,13 +196,17 @@ export default function LoginPage() {
       const lowerMessage = message.toLowerCase();
 
       if (
-        lowerMessage.includes("invalid login credentials") ||
+        lowerMessage.includes(
+          "invalid login credentials"
+        ) ||
         lowerMessage.includes("invalid credentials")
       ) {
         message =
           "Incorrect email or password. Please try again.";
       } else if (
-        lowerMessage.includes("email not confirmed")
+        lowerMessage.includes(
+          "email not confirmed"
+        )
       ) {
         message =
           "Please confirm your email address before signing in.";
@@ -219,6 +291,7 @@ export default function LoginPage() {
       <Navbar />
 
       <section className="min-h-screen border-b border-white/10 pt-24">
+
         <div className="mx-auto grid min-h-[calc(100vh-96px)] max-w-7xl lg:grid-cols-2">
 
           {/* ==================================================
@@ -421,6 +494,7 @@ export default function LoginPage() {
                   disabled={loading}
                   className="flex w-full items-center justify-center gap-3 rounded-full bg-[#c9a45c] py-4 text-sm font-medium text-black transition hover:bg-[#d8b873] disabled:cursor-not-allowed disabled:opacity-60"
                 >
+
                   {loading ? (
                     <>
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
@@ -434,6 +508,7 @@ export default function LoginPage() {
                       <span>→</span>
                     </>
                   )}
+
                 </button>
 
               </form>
