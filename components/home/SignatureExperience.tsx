@@ -1,6 +1,16 @@
 import Link from "next/link";
 
-export default function SignatureExperience() {
+import { getActiveRestaurant } from "@/lib/restaurant";
+
+export default async function SignatureExperience() {
+  const restaurant = await getActiveRestaurant();
+
+  const restaurantName = restaurant?.name || "Aarambh Restaurant";
+
+  const description =
+    restaurant?.description ||
+    "At Aarambh, dining is about more than just food. It is about sharing a table, enjoying familiar flavours and creating moments with the people who matter.";
+
   return (
     <section className="border-b border-white/10 bg-black">
       <div className="mx-auto max-w-7xl px-5 py-24 sm:px-6 sm:py-32 lg:px-8">
@@ -9,7 +19,7 @@ export default function SignatureExperience() {
           <div className="group relative aspect-[16/11] overflow-hidden rounded-2xl border border-white/10 bg-[#111]">
             <img
               src="/images/signature-dish.png"
-              alt="Aarambh Restaurant signature dish"
+              alt={`${restaurantName} signature dish`}
               loading="lazy"
               className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
             />
@@ -18,7 +28,7 @@ export default function SignatureExperience() {
 
             <div className="absolute bottom-5 left-5">
               <p className="text-[10px] uppercase tracking-[0.3em] text-white/45">
-                Aarambh Special
+                {restaurantName}
               </p>
 
               <p className="mt-1 text-sm text-white/80">
@@ -40,15 +50,13 @@ export default function SignatureExperience() {
             </h2>
 
             <p className="mt-7 max-w-xl text-base leading-8 text-white/60">
-              At Aarambh, dining is about more than just food. It is about
-              sharing a table, enjoying familiar flavours and creating
-              moments with the people who matter.
+              {description}
             </p>
 
             <p className="mt-5 max-w-xl text-sm leading-7 text-white/40">
               Explore our selection of Indian, Maharashtrian, Chinese and
-              tandoor favourites — from Paneer Tikka and Tandoori Chicken to
-              our Aarambh Special Chicken Biryani.
+              tandoor favourites, prepared with carefully selected ingredients
+              and served with warmth.
             </p>
 
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
