@@ -17,20 +17,21 @@ type Profile = {
 
 type Reservation = {
   id: string;
-  booking_date: string;
-  booking_time: string;
+  reservation_date: string;
+  reservation_time: string;
   guests: number;
   status: string;
 };
 
 type Order = {
   id: string;
-  total: number;
+  order_number: number | null;
+  total_amount: number;
   status: string;
   created_at: string;
 };
 
-export default function ProfilePage() {
+export default function AccountPage() {
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState("overview");
@@ -106,68 +107,46 @@ export default function ProfilePage() {
           throw profileError;
         }
 
-        let currentProfile: Profile;
-
         /*
         --------------------------------------------------------
-        CREATE PROFILE IF MISSING
+        PROFILE MUST EXIST
         --------------------------------------------------------
         */
 
         if (!profileData) {
-          const newProfile = {
-            id: user.id,
-            full_name: user.user_metadata?.full_name || "",
-            phone: user.user_metadata?.phone || "",
-            role: "customer",
-          };
+          console.error(
+            "Customer profile was not found for authenticated user."
+          );
 
-          const {
-            data: createdProfile,
-            error: createError,
-          } = await supabase
-            .from("profiles")
-            .insert(newProfile)
-            .select("id, full_name, phone, role")
-            .single();
+          await supabase.auth.signOut();
 
-          if (createError) {
-            /*
-             * A concurrent profile creation can happen during
-             * registration/session initialization.
-             * In that case, try reading the existing profile.
-             */
-            const { data: existingProfile, error: retryError } =
-              await supabase
-                .from("profiles")
-                .select("id, full_name, phone, role")
-                .eq("id", user.id)
-                .maybeSingle();
-
-            if (retryError || !existingProfile) {
-              throw createError;
-            }
-
-            currentProfile = existingProfile;
-          } else {
-            currentProfile = createdProfile;
-          }
-        } else {
-          currentProfile = profileData;
+          router.replace("/login");
+          return;
         }
 
-        if (!mounted) return;
+        const currentProfile: Profile = profileData;
 
         /*
         --------------------------------------------------------
-        OWNER REDIRECT
+        ROLE VERIFICATION
         --------------------------------------------------------
         */
 
-        if (currentProfile.role?.toLowerCase() === "owner") {
+        const role = currentProfile.role?.toLowerCase();
+
+        if (role === "owner" || role === "admin") {
           router.replace("/owner");
           return;
         }
+
+        if (role !== "customer") {
+          await supabase.auth.signOut();
+
+          router.replace("/login");
+          return;
+        }
+
+        if (!mounted) return;
 
         setProfile(currentProfile);
 
@@ -186,10 +165,10 @@ export default function ProfilePage() {
         } = await supabase
           .from("reservations")
           .select(
-            "id, booking_date, booking_time, guests, status"
+            "id, reservation_date, reservation_time, guests, status"
           )
           .eq("customer_id", user.id)
-          .order("booking_date", {
+          .order("reservation_date", {
             ascending: false,
           });
 
@@ -215,7 +194,9 @@ export default function ProfilePage() {
         const { data: orderData, error: orderError } =
           await supabase
             .from("orders")
-            .select("id, total, status, created_at")
+            .select(
+              "id, order_number, total_amount, status, created_at"
+            )
             .eq("customer_id", user.id)
             .order("created_at", {
               ascending: false,
@@ -292,23 +273,41 @@ export default function ProfilePage() {
       }
 
       /*
-       * Do not allow the browser to decide/change the user's role.
-       * The existing role remains untouched by updating only
-       * customer-editable fields.
+       * Only customer-editable fields are updated.
+       * The browser cannot change the user's role.
        */
-      const { data: updatedProfile, error: updateError } =
-        await supabase
-          .from("profiles")
-          .update({
-            full_name: cleanName,
-            phone: cleanPhone,
-          })
-          .eq("id", user.id)
-          .select("id, full_name, phone, role")
-          .single();
+
+      const {
+        data: updatedProfile,
+        error: updateError,
+      } = await supabase
+        .from("profiles")
+        .update({
+          full_name: cleanName,
+          phone: cleanPhone,
+        })
+        .eq("id", user.id)
+        .select("id, full_name, phone, role")
+        .single();
 
       if (updateError) {
         throw updateError;
+      }
+
+      /*
+      --------------------------------------------------------
+      VERIFY ROLE AFTER UPDATE
+      --------------------------------------------------------
+      */
+
+      const updatedRole =
+        updatedProfile.role?.toLowerCase();
+
+      if (updatedRole !== "customer") {
+        await supabase.auth.signOut();
+
+        router.replace("/login");
+        return;
       }
 
       setProfile(updatedProfile);
@@ -368,7 +367,7 @@ export default function ProfilePage() {
 
   /*
   ============================================================
-  DATE
+  FORMAT DATE
   ============================================================
   */
 
@@ -390,7 +389,7 @@ export default function ProfilePage() {
 
   /*
   ============================================================
-  TIME
+  FORMAT TIME
   ============================================================
   */
 
@@ -448,19 +447,27 @@ export default function ProfilePage() {
   const firstLetter =
     displayName.charAt(0).toUpperCase() || "G";
 
+  /*
+  ------------------------------------------------------------
+  UPCOMING RESERVATIONS
+  ------------------------------------------------------------
+  */
+
   const upcomingReservations = reservations.filter(
     (reservation) => {
       if (
-        reservation.status?.toLowerCase() === "cancelled"
+        reservation.status?.toLowerCase() ===
+        "cancelled"
       ) {
         return false;
       }
 
       const reservationDate = new Date(
-        reservation.booking_date
+        `${reservation.reservation_date}T00:00:00`
       );
 
       const today = new Date();
+
       today.setHours(0, 0, 0, 0);
 
       return reservationDate >= today;
@@ -517,7 +524,6 @@ export default function ProfilePage() {
 
       <section className="border-b border-white/10">
         <div className="mx-auto grid max-w-7xl lg:grid-cols-[240px_1fr]">
-
           {/* SIDEBAR */}
 
           <aside className="border-b border-white/10 p-6 lg:min-h-[700px] lg:border-b-0 lg:border-r">
@@ -547,6 +553,7 @@ export default function ProfilePage() {
               ].map(([id, label]) => (
                 <button
                   key={id}
+                  type="button"
                   onClick={() => setActiveTab(id)}
                   className={`w-full px-4 py-3 text-left text-sm transition ${
                     activeTab === id
@@ -568,6 +575,7 @@ export default function ProfilePage() {
               </Link>
 
               <button
+                type="button"
                 onClick={handleSignOut}
                 disabled={signingOut}
                 className="block w-full px-4 py-3 text-left text-sm text-red-300/60 transition hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
@@ -582,7 +590,6 @@ export default function ProfilePage() {
           {/* MAIN */}
 
           <div className="p-6 sm:p-10 lg:p-14">
-
             {error && (
               <div className="mb-8 border border-red-400/20 bg-red-400/5 px-5 py-4 text-sm leading-6 text-red-300">
                 {error}
@@ -656,6 +663,7 @@ export default function ProfilePage() {
                     </div>
 
                     <button
+                      type="button"
                       onClick={() =>
                         setActiveTab("reservations")
                       }
@@ -681,7 +689,7 @@ export default function ProfilePage() {
 
                                 <p className="mt-3 text-lg">
                                   {formatDate(
-                                    reservation.booking_date
+                                    reservation.reservation_date
                                   )}
                                 </p>
                               </div>
@@ -693,7 +701,7 @@ export default function ProfilePage() {
 
                                 <p className="mt-3 text-lg">
                                   {formatTime(
-                                    reservation.booking_time
+                                    reservation.reservation_time
                                   )}
                                 </p>
                               </div>
@@ -888,6 +896,7 @@ export default function ProfilePage() {
                   </div>
 
                   <button
+                    type="button"
                     onClick={handleSaveProfile}
                     disabled={saving}
                     className="bg-[#c9a45c] px-6 py-4 text-sm font-medium text-black transition hover:bg-[#dfbd72] disabled:cursor-not-allowed disabled:opacity-60"
@@ -946,7 +955,7 @@ export default function ProfilePage() {
 
                             <p className="mt-2 text-sm">
                               {formatDate(
-                                reservation.booking_date
+                                reservation.reservation_date
                               )}
                             </p>
                           </div>
@@ -958,7 +967,7 @@ export default function ProfilePage() {
 
                             <p className="mt-2 text-sm">
                               {formatTime(
-                                reservation.booking_time
+                                reservation.reservation_time
                               )}
                             </p>
                           </div>
@@ -1034,16 +1043,21 @@ export default function ProfilePage() {
                             </p>
 
                             <p className="mt-4 text-sm text-white/60">
-                              Order #{order.id.slice(0, 8)}
+                              {order.order_number
+                                ? `Order #${order.order_number}`
+                                : `Order #${order.id.slice(
+                                    0,
+                                    8
+                                  )}`}
                             </p>
                           </div>
 
                           <div className="sm:text-right">
                             <p className="text-lg font-light">
                               ₹
-                              {Number(order.total).toLocaleString(
-                                "en-IN"
-                              )}
+                              {Number(
+                                order.total_amount
+                              ).toLocaleString("en-IN")}
                             </p>
 
                             <span className="mt-3 inline-block bg-white/[0.05] px-3 py-2 text-xs capitalize text-white/40">
@@ -1077,7 +1091,7 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                   <div className="border border-white/10 p-5">
                     <p className="text-sm">
-                      Password & Security
+                      Password &amp; Security
                     </p>
 
                     <p className="mt-1 text-xs leading-5 text-white/35">
