@@ -1,18 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import { supabase } from "@/lib/supabase";
 
-type RestaurantStatus = "Open" | "Closed" | "Paused";
+type RestaurantStatus = "open" | "closed" | "temporarily_closed";
 
 type DayHours = {
-  day: string;
-  key: string;
-  enabled: boolean;
   open: string;
   close: string;
+  closed: boolean;
 };
+
+type Hours = Record<string, DayHours>;
 
 type Restaurant = {
   id: string;
@@ -30,104 +31,110 @@ type Restaurant = {
   cover_image_url: string | null;
   maps_url: string | null;
   is_active: boolean;
-  opening_hours: Record<
-    string,
-    {
-      enabled: boolean;
-      open: string;
-      close: string;
-    }
-  > | null;
-  ordering_settings: {
-    onlineOrdering?: boolean;
-    tableBooking?: boolean;
-    delivery?: boolean;
-    pickup?: boolean;
-    minimumOrder?: string;
-    deliveryFee?: string;
-    deliveryTime?: string;
-  } | null;
-  payment_settings: {
-    upi?: boolean;
-    cash?: boolean;
-    online?: boolean;
-    upiId?: string;
-  } | null;
-  notification_settings: {
-    newOrders?: boolean;
-    reservations?: boolean;
-    messages?: boolean;
-    email?: boolean;
-    whatsapp?: boolean;
-  } | null;
   restaurant_status: RestaurantStatus;
+  opening_hours: Hours | null;
+  ordering_settings: Record<string, unknown> | null;
+  payment_settings: Record<string, unknown> | null;
+  notification_settings: Record<string, unknown> | null;
 };
 
-const defaultHours: DayHours[] = [
+const defaultHours: Hours = {
+  Monday: { open: "11:00", close: "23:00", closed: false },
+  Tuesday: { open: "11:00", close: "23:00", closed: false },
+  Wednesday: { open: "11:00", close: "23:00", closed: false },
+  Thursday: { open: "11:00", close: "23:00", closed: false },
+  Friday: { open: "11:00", close: "23:30", closed: false },
+  Saturday: { open: "11:00", close: "23:30", closed: false },
+  Sunday: { open: "11:00", close: "23:00", closed: false },
+};
+
+const statusOptions: {
+  value: RestaurantStatus;
+  label: string;
+  description: string;
+}[] = [
   {
-    day: "Monday",
-    key: "monday",
-    enabled: true,
-    open: "11:00",
-    close: "23:00",
+    value: "open",
+    label: "Open",
+    description: "Restaurant is accepting orders and bookings.",
   },
   {
-    day: "Tuesday",
-    key: "tuesday",
-    enabled: true,
-    open: "11:00",
-    close: "23:00",
+    value: "closed",
+    label: "Closed",
+    description: "Restaurant is currently not operating.",
   },
   {
-    day: "Wednesday",
-    key: "wednesday",
-    enabled: true,
-    open: "11:00",
-    close: "23:00",
-  },
-  {
-    day: "Thursday",
-    key: "thursday",
-    enabled: true,
-    open: "11:00",
-    close: "23:00",
-  },
-  {
-    day: "Friday",
-    key: "friday",
-    enabled: true,
-    open: "11:00",
-    close: "23:30",
-  },
-  {
-    day: "Saturday",
-    key: "saturday",
-    enabled: true,
-    open: "11:00",
-    close: "23:30",
-  },
-  {
-    day: "Sunday",
-    key: "sunday",
-    enabled: true,
-    open: "11:00",
-    close: "23:00",
+    value: "temporarily_closed",
+    label: "Temporarily Closed",
+    description: "Restaurant is temporarily unavailable.",
   },
 ];
+
+function normalizeHours(value: Hours | null | undefined): Hours {
+  if (!value || typeof value !== "object") {
+    return { ...defaultHours };
+  }
+
+  const normalized: Hours = {};
+
+  for (const day of Object.keys(defaultHours)) {
+    const saved = value[day];
+
+    normalized[day] = {
+      open:
+        typeof saved?.open === "string"
+          ? saved.open
+          : defaultHours[day].open,
+      close:
+        typeof saved?.close === "string"
+          ? saved.close
+          : defaultHours[day].close,
+      closed:
+        typeof saved?.closed === "boolean"
+          ? saved.closed
+          : defaultHours[day].closed,
+    };
+  }
+
+  return normalized;
+}
+
+function isValidEmail(email: string) {
+  if (!email.trim()) return true;
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function isValidUrl(value: string) {
+  if (!value.trim()) return true;
+
+  try {
+    new URL(value.trim());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidTimeRange(open: string, close: string) {
+  return open < close;
+}
 
 export default function OwnerSettingsPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const [restaurantId, setRestaurantId] = useState("");
 
+  const [ownerLoginEmail, setOwnerLoginEmail] = useState("");
+
   const [restaurant, setRestaurant] = useState({
     name: "",
-    owner: "",
     phone: "",
     email: "",
     description: "",
@@ -143,7 +150,7 @@ export default function OwnerSettingsPage() {
     maps: "",
   });
 
-  const [hours, setHours] = useState<DayHours[]>(defaultHours);
+  const [hours, setHours] = useState<Hours>(defaultHours);
 
   const [ordering, setOrdering] = useState({
     onlineOrdering: true,
@@ -171,94 +178,103 @@ export default function OwnerSettingsPage() {
   });
 
   const [restaurantStatus, setRestaurantStatus] =
-    useState<RestaurantStatus>("Open");
+    useState<RestaurantStatus>("open");
 
-  /* =========================================================
-     LOAD SETTINGS
-  ========================================================= */
+  const days = useMemo(() => Object.keys(defaultHours), []);
 
-  const loadSettings = useCallback(async () => {
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  async function loadSettings() {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
     try {
-      setLoading(true);
-      setError("");
-
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) {
-        throw new Error(userError.message);
-      }
-
-      if (!user) {
-        router.push("/login");
+      if (userError || !user) {
+        router.replace("/owner/login");
         return;
       }
 
-      /* -------------------------------------------------------
-         RESTAURANT
-      ------------------------------------------------------- */
+      setOwnerLoginEmail(user.email ?? "");
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, role, full_name, phone")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profileError || !profile) {
+        await supabase.auth.signOut();
+        router.replace("/owner/login");
+        return;
+      }
+
+      if (profile.role?.toLowerCase() !== "owner") {
+        await supabase.auth.signOut();
+        router.replace("/login");
+        return;
+      }
 
       const { data: restaurantData, error: restaurantError } =
         await supabase
           .from("restaurants")
-          .select(`
-            id,
-            owner_id,
-            name,
-            slug,
-            description,
-            phone,
-            email,
-            address,
-            city,
-            state,
-            pincode,
-            logo_url,
-            cover_image_url,
-            maps_url,
-            is_active,
-            opening_hours,
-            ordering_settings,
-            payment_settings,
-            notification_settings,
-            restaurant_status
-          `)
+          .select(
+            `
+              id,
+              owner_id,
+              name,
+              slug,
+              description,
+              phone,
+              email,
+              address,
+              city,
+              state,
+              pincode,
+              logo_url,
+              cover_image_url,
+              maps_url,
+              is_active,
+              restaurant_status,
+              opening_hours,
+              ordering_settings,
+              payment_settings,
+              notification_settings
+            `
+          )
           .eq("owner_id", user.id)
           .maybeSingle();
 
       if (restaurantError) {
-        throw new Error(restaurantError.message);
+        console.error(restaurantError);
+        setError("Unable to load restaurant settings.");
+        return;
       }
 
       if (!restaurantData) {
-        throw new Error(
-          "No restaurant is connected to this owner account."
-        );
+        router.replace("/owner/restaurant/new");
+        return;
       }
 
       const data = restaurantData as Restaurant;
 
       setRestaurantId(data.id);
 
-      /* -------------------------------------------------------
-         RESTAURANT PROFILE
-      ------------------------------------------------------- */
-
       setRestaurant({
         name: data.name ?? "",
-        owner: "",
-        phone: data.phone ?? "",
+        phone: data.phone ?? profile.phone ?? "",
         email: data.email ?? "",
         description: data.description ?? "",
         logo: data.logo_url ?? "",
         cover: data.cover_image_url ?? "",
       });
-
-      /* -------------------------------------------------------
-         LOCATION
-      ------------------------------------------------------- */
 
       setLocation({
         address: data.address ?? "",
@@ -268,215 +284,299 @@ export default function OwnerSettingsPage() {
         maps: data.maps_url ?? "",
       });
 
-      /* -------------------------------------------------------
-         OPENING HOURS
-      ------------------------------------------------------- */
+      setHours(normalizeHours(data.opening_hours));
 
-      if (data.opening_hours) {
-        setHours(
-          defaultHours.map((item) => {
-            const savedHour = data.opening_hours?.[item.key];
+      const savedOrdering = data.ordering_settings ?? {};
 
-            return {
-              ...item,
-              enabled:
-                savedHour?.enabled !== undefined
-                  ? savedHour.enabled
-                  : item.enabled,
-              open: savedHour?.open ?? item.open,
-              close: savedHour?.close ?? item.close,
-            };
-          })
-        );
-      }
+      setOrdering({
+        onlineOrdering:
+          typeof savedOrdering.onlineOrdering === "boolean"
+            ? savedOrdering.onlineOrdering
+            : true,
 
-      /* -------------------------------------------------------
-         ORDERING
-      ------------------------------------------------------- */
+        tableBooking:
+          typeof savedOrdering.tableBooking === "boolean"
+            ? savedOrdering.tableBooking
+            : true,
 
-      if (data.ordering_settings) {
-        setOrdering({
-          onlineOrdering:
-            data.ordering_settings.onlineOrdering ?? true,
-          tableBooking:
-            data.ordering_settings.tableBooking ?? true,
-          delivery: data.ordering_settings.delivery ?? true,
-          pickup: data.ordering_settings.pickup ?? true,
-          minimumOrder:
-            data.ordering_settings.minimumOrder ?? "199",
-          deliveryFee:
-            data.ordering_settings.deliveryFee ?? "40",
-          deliveryTime:
-            data.ordering_settings.deliveryTime ?? "35–45 min",
-        });
-      }
+        delivery:
+          typeof savedOrdering.delivery === "boolean"
+            ? savedOrdering.delivery
+            : true,
 
-      /* -------------------------------------------------------
-         PAYMENTS
-      ------------------------------------------------------- */
+        pickup:
+          typeof savedOrdering.pickup === "boolean"
+            ? savedOrdering.pickup
+            : true,
 
-      if (data.payment_settings) {
-        setPayments({
-          upi: data.payment_settings.upi ?? true,
-          cash: data.payment_settings.cash ?? true,
-          online: data.payment_settings.online ?? true,
-          upiId: data.payment_settings.upiId ?? "",
-        });
-      }
+        minimumOrder:
+          typeof savedOrdering.minimumOrder === "string"
+            ? savedOrdering.minimumOrder
+            : typeof savedOrdering.minimumOrder === "number"
+              ? String(savedOrdering.minimumOrder)
+              : "199",
 
-      /* -------------------------------------------------------
-         NOTIFICATIONS
-      ------------------------------------------------------- */
+        deliveryFee:
+          typeof savedOrdering.deliveryFee === "string"
+            ? savedOrdering.deliveryFee
+            : typeof savedOrdering.deliveryFee === "number"
+              ? String(savedOrdering.deliveryFee)
+              : "40",
 
-      if (data.notification_settings) {
-        setNotifications({
-          newOrders:
-            data.notification_settings.newOrders ?? true,
-          reservations:
-            data.notification_settings.reservations ?? true,
-          messages:
-            data.notification_settings.messages ?? true,
-          email:
-            data.notification_settings.email ?? true,
-          whatsapp:
-            data.notification_settings.whatsapp ?? false,
-        });
-      }
+        deliveryTime:
+          typeof savedOrdering.deliveryTime === "string"
+            ? savedOrdering.deliveryTime
+            : "35–45 min",
+      });
 
-      /* -------------------------------------------------------
-         STATUS
-      ------------------------------------------------------- */
+      const savedPayments = data.payment_settings ?? {};
+
+      setPayments({
+        upi:
+          typeof savedPayments.upi === "boolean"
+            ? savedPayments.upi
+            : true,
+
+        cash:
+          typeof savedPayments.cash === "boolean"
+            ? savedPayments.cash
+            : true,
+
+        online:
+          typeof savedPayments.online === "boolean"
+            ? savedPayments.online
+            : true,
+
+        upiId:
+          typeof savedPayments.upiId === "string"
+            ? savedPayments.upiId
+            : "",
+      });
+
+      const savedNotifications = data.notification_settings ?? {};
+
+      setNotifications({
+        newOrders:
+          typeof savedNotifications.newOrders === "boolean"
+            ? savedNotifications.newOrders
+            : true,
+
+        reservations:
+          typeof savedNotifications.reservations === "boolean"
+            ? savedNotifications.reservations
+            : true,
+
+        messages:
+          typeof savedNotifications.messages === "boolean"
+            ? savedNotifications.messages
+            : true,
+
+        email:
+          typeof savedNotifications.email === "boolean"
+            ? savedNotifications.email
+            : true,
+
+        whatsapp:
+          typeof savedNotifications.whatsapp === "boolean"
+            ? savedNotifications.whatsapp
+            : false,
+      });
+
+      const validStatuses: RestaurantStatus[] = [
+        "open",
+        "closed",
+        "temporarily_closed",
+      ];
 
       setRestaurantStatus(
-        data.restaurant_status ??
-          (data.is_active ? "Open" : "Closed")
+        validStatuses.includes(data.restaurant_status)
+          ? data.restaurant_status
+          : data.is_active
+            ? "open"
+            : "closed"
       );
-
-      /* -------------------------------------------------------
-         OWNER PROFILE
-      ------------------------------------------------------- */
-
-      const { data: profileData, error: profileError } =
-        await supabase
-          .from("profiles")
-          .select("full_name, phone")
-          .eq("id", user.id)
-          .maybeSingle();
-
-      if (profileError) {
-        console.warn(
-          "Profile loading warning:",
-          profileError.message
-        );
-      }
-
-      setRestaurant((current) => ({
-        ...current,
-        owner: profileData?.full_name ?? "",
-        phone: data.phone ?? profileData?.phone ?? "",
-      }));
-    } catch (err) {
-      console.error("Settings loading error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load restaurant settings."
-      );
+    } catch (loadError) {
+      console.error(loadError);
+      setError("Something went wrong while loading settings.");
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }
 
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
+  function validateSettings() {
+    setError("");
 
-  /* =========================================================
-     SAVE SETTINGS
-  ========================================================= */
+    if (!restaurant.name.trim()) {
+      setError("Restaurant name is required.");
+      return false;
+    }
+
+    const cleanPhone = restaurant.phone.replace(/\D/g, "");
+
+    if (cleanPhone && cleanPhone.length !== 10) {
+      setError("Restaurant phone number must contain 10 digits.");
+      return false;
+    }
+
+    if (!isValidEmail(restaurant.email)) {
+      setError("Please enter a valid business email.");
+      return false;
+    }
+
+    const cleanPincode = location.pincode.replace(/\D/g, "");
+
+    if (cleanPincode && cleanPincode.length !== 6) {
+      setError("Pincode must contain 6 digits.");
+      return false;
+    }
+
+    if (!isValidUrl(location.maps)) {
+      setError("Please enter a valid Google Maps URL.");
+      return false;
+    }
+
+    const minimumOrder = Number(ordering.minimumOrder);
+    const deliveryFee = Number(ordering.deliveryFee);
+
+    if (
+      !Number.isFinite(minimumOrder) ||
+      minimumOrder < 0
+    ) {
+      setError("Minimum order amount must be a valid positive number.");
+      return false;
+    }
+
+    if (
+      !Number.isFinite(deliveryFee) ||
+      deliveryFee < 0
+    ) {
+      setError("Delivery fee must be a valid positive number.");
+      return false;
+    }
+
+    for (const day of days) {
+      const dayData = hours[day];
+
+      if (!dayData.closed && !isValidTimeRange(dayData.open, dayData.close)) {
+        setError(
+          `${day}: closing time must be later than opening time.`
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
 
   async function handleSave() {
+    if (!validateSettings()) {
+      return;
+    }
+
+    if (!restaurantId) {
+      setError("Restaurant information is missing.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
     try {
-      setSaving(true);
-      setSaved(false);
-      setError("");
-
-      if (!restaurantId) {
-        throw new Error("Restaurant ID is missing.");
-      }
-
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) {
-        throw new Error(userError.message);
-      }
-
-      if (!user) {
-        router.push("/login");
+      if (userError || !user) {
+        router.replace("/owner/login");
         return;
       }
 
-      /* -------------------------------------------------------
-         OPENING HOURS JSON
-      ------------------------------------------------------- */
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, role")
+        .eq("id", user.id)
+        .maybeSingle();
 
-      const openingHours = hours.reduce(
-        (result, item) => {
-          result[item.key] = {
-            enabled: item.enabled,
-            open: item.open,
-            close: item.close,
+      if (profileError || !profile) {
+        await supabase.auth.signOut();
+        router.replace("/owner/login");
+        return;
+      }
+
+      if (profile.role?.toLowerCase() !== "owner") {
+        await supabase.auth.signOut();
+        router.replace("/login");
+        return;
+      }
+
+      const cleanPhone = restaurant.phone.replace(/\D/g, "");
+      const cleanPincode = location.pincode.replace(/\D/g, "");
+
+      const minimumOrder = Number(ordering.minimumOrder);
+      const deliveryFee = Number(ordering.deliveryFee);
+
+      const openingHours = days.reduce<Record<string, DayHours>>(
+        (result, day) => {
+          result[day] = {
+            open: hours[day].open,
+            close: hours[day].close,
+            closed: hours[day].closed,
           };
 
           return result;
         },
-        {} as Record<
-          string,
-          {
-            enabled: boolean;
-            open: string;
-            close: string;
-          }
-        >
+        {}
       );
 
-      /* -------------------------------------------------------
-         UPDATE RESTAURANT
-      ------------------------------------------------------- */
+      const orderingSettings = {
+        pickup: ordering.pickup,
+        delivery: ordering.delivery,
+        onlineOrdering: ordering.onlineOrdering,
+        tableBooking: ordering.tableBooking,
+        minimumOrder,
+        deliveryFee,
+        deliveryTime: ordering.deliveryTime.trim(),
+      };
+
+      const paymentSettings = {
+        cash: payments.cash,
+        upi: payments.upi,
+        online: payments.online,
+        upiId: payments.upiId.trim(),
+      };
+
+      const notificationSettings = {
+        email: notifications.email,
+        whatsapp: notifications.whatsapp,
+        newOrders: notifications.newOrders,
+        reservations: notifications.reservations,
+        messages: notifications.messages,
+      };
 
       const { error: updateError } = await supabase
         .from("restaurants")
         .update({
           name: restaurant.name.trim(),
           description: restaurant.description.trim() || null,
-          phone: restaurant.phone.trim() || null,
+          phone: cleanPhone || null,
           email: restaurant.email.trim() || null,
-
           address: location.address.trim() || null,
           city: location.city.trim() || null,
           state: location.state.trim() || null,
-          pincode: location.pincode.trim() || null,
-
+          pincode: cleanPincode || null,
           logo_url: restaurant.logo.trim() || null,
           cover_image_url: restaurant.cover.trim() || null,
-
           maps_url: location.maps.trim() || null,
 
-          is_active: restaurantStatus === "Open",
-
+          is_active: restaurantStatus === "open",
           restaurant_status: restaurantStatus,
 
           opening_hours: openingHours,
-
-          ordering_settings: ordering,
-
-          payment_settings: payments,
-
-          notification_settings: notifications,
+          ordering_settings: orderingSettings,
+          payment_settings: paymentSettings,
+          notification_settings: notificationSettings,
 
           updated_at: new Date().toISOString(),
         })
@@ -484,136 +584,177 @@ export default function OwnerSettingsPage() {
         .eq("owner_id", user.id);
 
       if (updateError) {
-        throw new Error(updateError.message);
+        console.error(updateError);
+        setError(
+          updateError.message ||
+            "Unable to save restaurant settings."
+        );
+        return;
       }
-
-      /* -------------------------------------------------------
-         UPDATE OWNER PROFILE
-      ------------------------------------------------------- */
 
       const { error: profileUpdateError } = await supabase
         .from("profiles")
         .update({
-          full_name: restaurant.owner.trim() || null,
-          phone: restaurant.phone.trim() || null,
+          full_name: restaurant.name.trim(),
+          phone: cleanPhone || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", user.id);
 
       if (profileUpdateError) {
-        console.warn(
-          "Owner profile update warning:",
-          profileUpdateError.message
-        );
+        console.error(profileUpdateError);
       }
 
-      setSaved(true);
+      setSuccess("Restaurant settings saved successfully.");
 
-      setTimeout(() => {
-        setSaved(false);
-      }, 2500);
-    } catch (err) {
-      console.error("Settings save error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save settings."
-      );
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    } catch (saveError) {
+      console.error(saveError);
+      setError("Something went wrong while saving settings.");
     } finally {
       setSaving(false);
     }
   }
 
-  /* =========================================================
-     UPDATE HOURS
-  ========================================================= */
-
   function updateHour(
-    index: number,
+    day: string,
     field: keyof DayHours,
     value: string | boolean
   ) {
-    setHours((current) =>
-      current.map((item, i) =>
-        i === index
-          ? {
-              ...item,
-              [field]: value,
-            }
-          : item
-      )
+    setHours((current) => ({
+      ...current,
+      [day]: {
+        ...current[day],
+        [field]: value,
+      },
+    }));
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.replace("/owner/login");
+  }
+
+  function Input({
+    label,
+    value,
+    onChange,
+    type = "text",
+    placeholder,
+    disabled = false,
+  }: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    type?: string;
+    placeholder?: string;
+    disabled?: boolean;
+  }) {
+    return (
+      <label className="block">
+        <span className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-white/45">
+          {label}
+        </span>
+
+        <input
+          type={type}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/60 focus:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      </label>
     );
   }
 
-  /* =========================================================
-     SIGN OUT
-  ========================================================= */
+  function Textarea({
+    label,
+    value,
+    onChange,
+    placeholder,
+  }: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    placeholder?: string;
+  }) {
+    return (
+      <label className="block">
+        <span className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-white/45">
+          {label}
+        </span>
 
-  async function handleSignOut() {
-    try {
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      router.push("/login");
-      router.refresh();
-    } catch (err) {
-      console.error("Sign out error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to sign out."
-      );
-    }
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          rows={4}
+          className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/60 focus:bg-white/[0.06]"
+        />
+      </label>
+    );
   }
 
-  /* =========================================================
-     LOADING
-  ========================================================= */
+  function Toggle({
+    label,
+    description,
+    checked,
+    onChange,
+  }: {
+    label: string;
+    description?: string;
+    checked: boolean;
+    onChange: (value: boolean) => void;
+  }) {
+    return (
+      <button
+        type="button"
+        onClick={() => onChange(!checked)}
+        className="flex w-full items-center justify-between gap-5 rounded-xl border border-white/10 bg-white/[0.025] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.04]"
+      >
+        <span>
+          <span className="block text-sm font-medium text-white">
+            {label}
+          </span>
+
+          {description && (
+            <span className="mt-1 block text-xs leading-5 text-white/35">
+              {description}
+            </span>
+          )}
+        </span>
+
+        <span
+          className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+            checked ? "bg-[#c9a45c]" : "bg-white/10"
+          }`}
+        >
+          <span
+            className={`absolute top-1 h-4 w-4 rounded-full transition ${
+              checked
+                ? "left-6 bg-black"
+                : "left-1 bg-white/50"
+            }`}
+          />
+        </span>
+      </button>
+    );
+  }
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#080808] text-white">
-        <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4">
+      <main className="min-h-screen bg-black text-white">
+        <div className="flex min-h-screen items-center justify-center">
           <div className="text-center">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+            <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-white/10 border-t-[#c9a45c]" />
 
-            <p className="mt-4 text-sm text-white/40">
-              Loading restaurant settings...
+            <p className="mt-6 text-xs uppercase tracking-[0.3em] text-white/40">
+              Loading restaurant settings
             </p>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  /* =========================================================
-     ERROR
-  ========================================================= */
-
-  if (error && !restaurantId) {
-    return (
-      <main className="min-h-screen bg-[#080808] text-white">
-        <div className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-4">
-          <div className="w-full rounded-2xl border border-red-500/20 bg-red-500/[0.04] p-6 text-center">
-            <div className="text-sm font-semibold text-red-300">
-              Unable to load settings
-            </div>
-
-            <p className="mt-2 text-sm leading-6 text-white/45">
-              {error}
-            </p>
-
-            <button
-              onClick={loadSettings}
-              className="mt-5 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black"
-            >
-              Try Again
-            </button>
           </div>
         </div>
       </main>
@@ -621,896 +762,678 @@ export default function OwnerSettingsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#080808] text-white">
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
+    <main className="min-h-screen bg-black text-white">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-black/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-5 py-4 sm:px-8">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.3em] text-[#c9a45c]">
+              AARAMBH
+            </p>
 
-      <section className="border-b border-white/10">
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
-            <div>
-              <div className="mb-3 text-xs font-medium uppercase tracking-[0.28em] text-white/40">
-                AURA OWNER
-              </div>
+            <h1 className="mt-1 text-lg font-semibold tracking-tight">
+              Restaurant Settings
+            </h1>
+          </div>
 
-              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                Restaurant Settings
-              </h1>
-
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">
-                Manage your restaurant profile, operations, ordering,
-                payments, opening hours and notifications.
-              </p>
-            </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => router.push("/owner")}
+              className="hidden rounded-lg border border-white/10 px-4 py-2 text-xs font-medium text-white/70 transition hover:border-white/20 hover:text-white sm:block"
+            >
+              Dashboard
+            </button>
 
             <button
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onClick={handleSignOut}
+              className="rounded-lg border border-white/10 px-4 py-2 text-xs font-medium text-white/60 transition hover:border-red-400/30 hover:text-red-300"
             >
-              {saving
-                ? "Saving..."
-                : saved
-                ? "✓ Changes Saved"
-                : "Save Changes"}
+              Sign Out
             </button>
           </div>
         </div>
-      </section>
+      </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:py-12">
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-300">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-300">
+            {success}
+          </div>
+        )}
+
+        <div className="mb-10">
+          <p className="text-xs uppercase tracking-[0.25em] text-[#c9a45c]">
+            Management
+          </p>
+
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+            Control your restaurant
+          </h2>
+
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">
+            Manage your restaurant profile, operating hours,
+            ordering, payments and notifications from one place.
+          </p>
+        </div>
+
         <div className="space-y-8">
-          {/* =====================================================
-              ERROR MESSAGE
-          ===================================================== */}
+          {/* Restaurant Status */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold">
+                Restaurant Status
+              </h3>
 
-          {error && (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/[0.04] p-4">
-              <p className="text-sm text-red-300">
-                {error}
+              <p className="mt-1 text-sm text-white/40">
+                Control whether customers can currently interact
+                with your restaurant.
               </p>
             </div>
-          )}
 
-          {/* =====================================================
-              RESTAURANT STATUS
-          ===================================================== */}
+            <div className="grid gap-3 md:grid-cols-3">
+              {statusOptions.map((option) => {
+                const active =
+                  restaurantStatus === option.value;
 
-          <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-6">
-            <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
-              <div>
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`h-2.5 w-2.5 rounded-full ${
-                      restaurantStatus === "Open"
-                        ? "bg-emerald-400"
-                        : restaurantStatus === "Paused"
-                        ? "bg-yellow-400"
-                        : "bg-red-400"
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      setRestaurantStatus(option.value)
+                    }
+                    className={`rounded-xl border p-4 text-left transition ${
+                      active
+                        ? "border-[#c9a45c]/60 bg-[#c9a45c]/10"
+                        : "border-white/10 bg-white/[0.02] hover:border-white/20"
                     }`}
-                  />
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`text-sm font-semibold ${
+                          active
+                            ? "text-[#c9a45c]"
+                            : "text-white"
+                        }`}
+                      >
+                        {option.label}
+                      </span>
 
-                  <h2 className="text-lg font-semibold">
-                    Restaurant Status
-                  </h2>
-                </div>
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${
+                          active
+                            ? "bg-[#c9a45c]"
+                            : "bg-white/20"
+                        }`}
+                      />
+                    </div>
 
-                <p className="mt-2 text-sm text-white/40">
-                  Control whether customers can currently place
-                  orders.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {(["Open", "Closed", "Paused"] as const).map(
-                  (status) => (
-                    <button
-                      key={status}
-                      onClick={() =>
-                        setRestaurantStatus(status)
-                      }
-                      className={`rounded-lg border px-4 py-2 text-sm transition ${
-                        restaurantStatus === status
-                          ? "border-white bg-white text-black"
-                          : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"
-                      }`}
-                    >
-                      {status}
-                    </button>
-                  )
-                )}
-              </div>
+                    <p className="mt-2 text-xs leading-5 text-white/35">
+                      {option.description}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
           </section>
 
-          {/* =====================================================
-              RESTAURANT PROFILE
-          ===================================================== */}
-
-          <section className="rounded-2xl border border-white/10 bg-white/[0.025]">
-            <div className="border-b border-white/10 p-5 sm:p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                General
-              </p>
-
-              <h2 className="mt-2 text-xl font-semibold">
+          {/* Restaurant Profile */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold">
                 Restaurant Profile
-              </h2>
+              </h3>
 
-              <p className="mt-2 text-sm text-white/40">
-                Basic information displayed across your customer
-                website.
+              <p className="mt-1 text-sm text-white/40">
+                Basic information displayed to your customers.
               </p>
             </div>
 
-            <div className="space-y-6 p-5 sm:p-6">
-              <div className="grid gap-6 lg:grid-cols-2">
-                <Input
-                  label="Restaurant Name"
-                  value={restaurant.name}
-                  onChange={(value) =>
-                    setRestaurant({
-                      ...restaurant,
-                      name: value,
-                    })
-                  }
-                />
-
-                <Input
-                  label="Owner Name"
-                  value={restaurant.owner}
-                  onChange={(value) =>
-                    setRestaurant({
-                      ...restaurant,
-                      owner: value,
-                    })
-                  }
-                />
-
-                <Input
-                  label="Phone Number"
-                  value={restaurant.phone}
-                  onChange={(value) =>
-                    setRestaurant({
-                      ...restaurant,
-                      phone: value,
-                    })
-                  }
-                />
-
-                <Input
-                  label="Business Email"
-                  value={restaurant.email}
-                  onChange={(value) =>
-                    setRestaurant({
-                      ...restaurant,
-                      email: value,
-                    })
-                  }
-                />
-              </div>
-
-              <Textarea
-                label="Restaurant Description"
-                value={restaurant.description}
+            <div className="grid gap-5 md:grid-cols-2">
+              <Input
+                label="Restaurant Name"
+                value={restaurant.name}
                 onChange={(value) =>
-                  setRestaurant({
-                    ...restaurant,
-                    description: value,
-                  })
+                  setRestaurant((current) => ({
+                    ...current,
+                    name: value,
+                  }))
                 }
+                placeholder="Aarambh Restaurant"
               />
 
-              <div className="grid gap-6 lg:grid-cols-2">
-                <ImageInput
-                  label="Restaurant Logo URL"
-                  value={restaurant.logo}
-                  onChange={(value) =>
-                    setRestaurant({
-                      ...restaurant,
-                      logo: value,
-                    })
-                  }
-                />
+              <Input
+                label="Business Phone"
+                value={restaurant.phone}
+                onChange={(value) =>
+                  setRestaurant((current) => ({
+                    ...current,
+                    phone: value,
+                  }))
+                }
+                placeholder="10 digit phone number"
+              />
 
-                <ImageInput
+              <Input
+                label="Business Email"
+                value={restaurant.email}
+                onChange={(value) =>
+                  setRestaurant((current) => ({
+                    ...current,
+                    email: value,
+                  }))
+                }
+                type="email"
+                placeholder="restaurant@example.com"
+              />
+
+              <Input
+                label="Restaurant Logo URL"
+                value={restaurant.logo}
+                onChange={(value) =>
+                  setRestaurant((current) => ({
+                    ...current,
+                    logo: value,
+                  }))
+                }
+                placeholder="https://..."
+              />
+
+              <div className="md:col-span-2">
+                <Input
                   label="Cover Image URL"
                   value={restaurant.cover}
                   onChange={(value) =>
-                    setRestaurant({
-                      ...restaurant,
+                    setRestaurant((current) => ({
+                      ...current,
                       cover: value,
-                    })
+                    }))
                   }
+                  placeholder="https://..."
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <Textarea
+                  label="Description"
+                  value={restaurant.description}
+                  onChange={(value) =>
+                    setRestaurant((current) => ({
+                      ...current,
+                      description: value,
+                    }))
+                  }
+                  placeholder="Tell customers about your restaurant..."
                 />
               </div>
             </div>
           </section>
 
-          {/* =====================================================
-              LOCATION
-          ===================================================== */}
-
-          <section className="rounded-2xl border border-white/10 bg-white/[0.025]">
-            <div className="border-b border-white/10 p-5 sm:p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+          {/* Location */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold">
                 Location
-              </p>
+              </h3>
 
-              <h2 className="mt-2 text-xl font-semibold">
-                Restaurant Location
-              </h2>
+              <p className="mt-1 text-sm text-white/40">
+                Restaurant address and location information.
+              </p>
             </div>
 
-            <div className="space-y-6 p-5 sm:p-6">
-              <Textarea
-                label="Full Address"
-                value={location.address}
-                onChange={(value) =>
-                  setLocation({
-                    ...location,
-                    address: value,
-                  })
-                }
-              />
-
-              <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="md:col-span-2">
                 <Input
-                  label="City"
-                  value={location.city}
+                  label="Address"
+                  value={location.address}
                   onChange={(value) =>
-                    setLocation({
-                      ...location,
-                      city: value,
-                    })
+                    setLocation((current) => ({
+                      ...current,
+                      address: value,
+                    }))
                   }
-                />
-
-                <Input
-                  label="State"
-                  value={location.state}
-                  onChange={(value) =>
-                    setLocation({
-                      ...location,
-                      state: value,
-                    })
-                  }
-                />
-
-                <Input
-                  label="Pincode"
-                  value={location.pincode}
-                  onChange={(value) =>
-                    setLocation({
-                      ...location,
-                      pincode: value,
-                    })
-                  }
+                  placeholder="Restaurant street address"
                 />
               </div>
+
+              <Input
+                label="City"
+                value={location.city}
+                onChange={(value) =>
+                  setLocation((current) => ({
+                    ...current,
+                    city: value,
+                  }))
+                }
+                placeholder="Pune"
+              />
+
+              <Input
+                label="State"
+                value={location.state}
+                onChange={(value) =>
+                  setLocation((current) => ({
+                    ...current,
+                    state: value,
+                  }))
+                }
+                placeholder="Maharashtra"
+              />
+
+              <Input
+                label="Pincode"
+                value={location.pincode}
+                onChange={(value) =>
+                  setLocation((current) => ({
+                    ...current,
+                    pincode: value,
+                  }))
+                }
+                placeholder="411041"
+              />
 
               <Input
                 label="Google Maps URL"
                 value={location.maps}
                 onChange={(value) =>
-                  setLocation({
-                    ...location,
+                  setLocation((current) => ({
+                    ...current,
                     maps: value,
-                  })
+                  }))
                 }
+                placeholder="https://maps.google.com/..."
               />
             </div>
           </section>
 
-          {/* =====================================================
-              OPENING HOURS
-          ===================================================== */}
-
-          <section className="rounded-2xl border border-white/10 bg-white/[0.025]">
-            <div className="border-b border-white/10 p-5 sm:p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                Operations
-              </p>
-
-              <h2 className="mt-2 text-xl font-semibold">
+          {/* Opening Hours */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold">
                 Opening Hours
-              </h2>
+              </h3>
 
-              <p className="mt-2 text-sm text-white/40">
-                Set the hours customers can visit or place orders.
+              <p className="mt-1 text-sm text-white/40">
+                Set the operating hours customers will see.
               </p>
             </div>
 
-            <div className="divide-y divide-white/10">
-              {hours.map((item, index) => (
+            <div className="space-y-3">
+              {days.map((day) => (
                 <div
-                  key={item.day}
-                  className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                  key={day}
+                  className="grid gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center"
                 >
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() =>
-                        updateHour(
-                          index,
-                          "enabled",
-                          !item.enabled
-                        )
-                      }
-                      className={`relative h-6 w-11 rounded-full transition ${
-                        item.enabled
-                          ? "bg-white"
-                          : "bg-white/10"
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-1 h-4 w-4 rounded-full transition ${
-                          item.enabled
-                            ? "left-6 bg-black"
-                            : "left-1 bg-white/40"
-                        }`}
-                      />
-                    </button>
+                  <div>
+                    <p className="text-sm font-medium">
+                      {day}
+                    </p>
 
-                    <span className="w-24 text-sm font-medium">
-                      {item.day}
-                    </span>
+                    <p className="mt-1 text-xs text-white/30">
+                      {hours[day].closed
+                        ? "Closed"
+                        : `${hours[day].open} – ${hours[day].close}`}
+                    </p>
                   </div>
 
-                  {item.enabled ? (
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="time"
-                        value={item.open}
-                        onChange={(e) =>
-                          updateHour(
-                            index,
-                            "open",
-                            e.target.value
-                          )
-                        }
-                        className="rounded-lg border border-white/10 bg-black px-3 py-2 text-sm text-white outline-none"
-                      />
+                  <input
+                    type="time"
+                    value={hours[day].open}
+                    disabled={hours[day].closed}
+                    onChange={(event) =>
+                      updateHour(
+                        day,
+                        "open",
+                        event.target.value
+                      )
+                    }
+                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white outline-none disabled:opacity-30"
+                  />
 
-                      <span className="text-white/30">
-                        to
-                      </span>
+                  <input
+                    type="time"
+                    value={hours[day].close}
+                    disabled={hours[day].closed}
+                    onChange={(event) =>
+                      updateHour(
+                        day,
+                        "close",
+                        event.target.value
+                      )
+                    }
+                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white outline-none disabled:opacity-30"
+                  />
 
-                      <input
-                        type="time"
-                        value={item.close}
-                        onChange={(e) =>
-                          updateHour(
-                            index,
-                            "close",
-                            e.target.value
-                          )
-                        }
-                        className="rounded-lg border border-white/10 bg-black px-3 py-2 text-sm text-white outline-none"
-                      />
-                    </div>
-                  ) : (
-                    <span className="text-sm text-white/30">
-                      Closed
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateHour(
+                        day,
+                        "closed",
+                        !hours[day].closed
+                      )
+                    }
+                    className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
+                      hours[day].closed
+                        ? "bg-white/10 text-white/60"
+                        : "bg-[#c9a45c]/10 text-[#c9a45c]"
+                    }`}
+                  >
+                    {hours[day].closed
+                      ? "Closed"
+                      : "Open"}
+                  </button>
                 </div>
               ))}
             </div>
           </section>
 
-          {/* =====================================================
-              ORDERING & DELIVERY
-          ===================================================== */}
-
-          <section className="rounded-2xl border border-white/10 bg-white/[0.025]">
-            <div className="border-b border-white/10 p-5 sm:p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                Commerce
-              </p>
-
-              <h2 className="mt-2 text-xl font-semibold">
+          {/* Ordering */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold">
                 Ordering & Delivery
-              </h2>
+              </h3>
+
+              <p className="mt-1 text-sm text-white/40">
+                Configure how customers can order from your
+                restaurant.
+              </p>
             </div>
 
-            <div className="space-y-6 p-5 sm:p-6">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Toggle
-                  title="Online Ordering"
-                  description="Allow customers to place food orders."
-                  enabled={ordering.onlineOrdering}
-                  onChange={(value) =>
-                    setOrdering({
-                      ...ordering,
-                      onlineOrdering: value,
-                    })
-                  }
-                />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Toggle
+                label="Online Ordering"
+                description="Allow customers to place online orders."
+                checked={ordering.onlineOrdering}
+                onChange={(value) =>
+                  setOrdering((current) => ({
+                    ...current,
+                    onlineOrdering: value,
+                  }))
+                }
+              />
 
-                <Toggle
-                  title="Table Booking"
-                  description="Allow customers to reserve tables."
-                  enabled={ordering.tableBooking}
-                  onChange={(value) =>
-                    setOrdering({
-                      ...ordering,
-                      tableBooking: value,
-                    })
-                  }
-                />
+              <Toggle
+                label="Table Booking"
+                description="Allow customers to reserve tables."
+                checked={ordering.tableBooking}
+                onChange={(value) =>
+                  setOrdering((current) => ({
+                    ...current,
+                    tableBooking: value,
+                  }))
+                }
+              />
 
-                <Toggle
-                  title="Delivery"
-                  description="Accept delivery orders."
-                  enabled={ordering.delivery}
-                  onChange={(value) =>
-                    setOrdering({
-                      ...ordering,
-                      delivery: value,
-                    })
-                  }
-                />
+              <Toggle
+                label="Delivery"
+                description="Enable home delivery orders."
+                checked={ordering.delivery}
+                onChange={(value) =>
+                  setOrdering((current) => ({
+                    ...current,
+                    delivery: value,
+                  }))
+                }
+              />
 
-                <Toggle
-                  title="Pickup"
-                  description="Allow customers to collect orders."
-                  enabled={ordering.pickup}
-                  onChange={(value) =>
-                    setOrdering({
-                      ...ordering,
-                      pickup: value,
-                    })
-                  }
-                />
-              </div>
+              <Toggle
+                label="Pickup"
+                description="Allow customers to collect orders."
+                checked={ordering.pickup}
+                onChange={(value) =>
+                  setOrdering((current) => ({
+                    ...current,
+                    pickup: value,
+                  }))
+                }
+              />
+            </div>
 
-              <div className="grid gap-6 border-t border-white/10 pt-6 md:grid-cols-3">
-                <Input
-                  label="Minimum Order ₹"
-                  value={ordering.minimumOrder}
-                  onChange={(value) =>
-                    setOrdering({
-                      ...ordering,
-                      minimumOrder: value,
-                    })
-                  }
-                />
+            <div className="mt-6 grid gap-5 md:grid-cols-3">
+              <Input
+                label="Minimum Order"
+                value={ordering.minimumOrder}
+                onChange={(value) =>
+                  setOrdering((current) => ({
+                    ...current,
+                    minimumOrder: value,
+                  }))
+                }
+                type="number"
+                placeholder="199"
+              />
 
-                <Input
-                  label="Delivery Fee ₹"
-                  value={ordering.deliveryFee}
-                  onChange={(value) =>
-                    setOrdering({
-                      ...ordering,
-                      deliveryFee: value,
-                    })
-                  }
-                />
+              <Input
+                label="Delivery Fee"
+                value={ordering.deliveryFee}
+                onChange={(value) =>
+                  setOrdering((current) => ({
+                    ...current,
+                    deliveryFee: value,
+                  }))
+                }
+                type="number"
+                placeholder="40"
+              />
 
-                <Input
-                  label="Estimated Delivery Time"
-                  value={ordering.deliveryTime}
-                  onChange={(value) =>
-                    setOrdering({
-                      ...ordering,
-                      deliveryTime: value,
-                    })
-                  }
-                />
-              </div>
+              <Input
+                label="Delivery Time"
+                value={ordering.deliveryTime}
+                onChange={(value) =>
+                  setOrdering((current) => ({
+                    ...current,
+                    deliveryTime: value,
+                  }))
+                }
+                placeholder="35–45 min"
+              />
             </div>
           </section>
 
-          {/* =====================================================
-              PAYMENTS
-          ===================================================== */}
-
-          <section className="rounded-2xl border border-white/10 bg-white/[0.025]">
-            <div className="border-b border-white/10 p-5 sm:p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/35">
+          {/* Payments */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold">
                 Payments
-              </p>
+              </h3>
 
-              <h2 className="mt-2 text-xl font-semibold">
-                Payment Settings
-              </h2>
-
-              <p className="mt-2 text-sm text-white/40">
-                Choose which payment methods your restaurant
-                accepts.
+              <p className="mt-1 text-sm text-white/40">
+                Configure payment methods available to customers.
               </p>
             </div>
 
-            <div className="space-y-3 p-5 sm:p-6">
+            <div className="grid gap-3 md:grid-cols-3">
               <Toggle
-                title="UPI Payments"
-                description="Accept payments through UPI."
-                enabled={payments.upi}
+                label="UPI"
+                description="Accept UPI payments."
+                checked={payments.upi}
                 onChange={(value) =>
-                  setPayments({
-                    ...payments,
+                  setPayments((current) => ({
+                    ...current,
                     upi: value,
-                  })
+                  }))
                 }
               />
 
               <Toggle
-                title="Cash on Delivery"
-                description="Allow customers to pay at delivery."
-                enabled={payments.cash}
+                label="Cash"
+                description="Accept cash payments."
+                checked={payments.cash}
                 onChange={(value) =>
-                  setPayments({
-                    ...payments,
+                  setPayments((current) => ({
+                    ...current,
                     cash: value,
-                  })
+                  }))
                 }
               />
 
               <Toggle
-                title="Online Card / Net Banking"
-                description="Enable online payment gateway."
-                enabled={payments.online}
+                label="Online Payment"
+                description="Accept online payments."
+                checked={payments.online}
                 onChange={(value) =>
-                  setPayments({
-                    ...payments,
+                  setPayments((current) => ({
+                    ...current,
                     online: value,
-                  })
+                  }))
                 }
               />
+            </div>
 
-              <div className="pt-4">
-                <Input
-                  label="UPI ID"
-                  value={payments.upiId}
-                  onChange={(value) =>
-                    setPayments({
-                      ...payments,
-                      upiId: value,
-                    })
-                  }
-                />
-              </div>
+            <div className="mt-5 max-w-xl">
+              <Input
+                label="UPI ID"
+                value={payments.upiId}
+                onChange={(value) =>
+                  setPayments((current) => ({
+                    ...current,
+                    upiId: value,
+                  }))
+                }
+                placeholder="restaurant@upi"
+              />
             </div>
           </section>
 
-          {/* =====================================================
-              NOTIFICATIONS
-          ===================================================== */}
-
-          <section className="rounded-2xl border border-white/10 bg-white/[0.025]">
-            <div className="border-b border-white/10 p-5 sm:p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                Communication
-              </p>
-
-              <h2 className="mt-2 text-xl font-semibold">
+          {/* Notifications */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold">
                 Notifications
-              </h2>
+              </h3>
+
+              <p className="mt-1 text-sm text-white/40">
+                Choose which business notifications you want to
+                receive.
+              </p>
             </div>
 
-            <div className="space-y-3 p-5 sm:p-6">
+            <div className="grid gap-3 md:grid-cols-2">
               <Toggle
-                title="New Order Alerts"
-                description="Get notified whenever a new order arrives."
-                enabled={notifications.newOrders}
+                label="New Orders"
+                description="Get notified when a new order arrives."
+                checked={notifications.newOrders}
                 onChange={(value) =>
-                  setNotifications({
-                    ...notifications,
+                  setNotifications((current) => ({
+                    ...current,
                     newOrders: value,
-                  })
+                  }))
                 }
               />
 
               <Toggle
-                title="Reservation Alerts"
-                description="Get notified about new table reservations."
-                enabled={notifications.reservations}
+                label="Reservations"
+                description="Get notified about table bookings."
+                checked={notifications.reservations}
                 onChange={(value) =>
-                  setNotifications({
-                    ...notifications,
+                  setNotifications((current) => ({
+                    ...current,
                     reservations: value,
-                  })
+                  }))
                 }
               />
 
               <Toggle
-                title="Customer Messages"
-                description="Receive customer communication alerts."
-                enabled={notifications.messages}
+                label="Messages"
+                description="Receive customer message notifications."
+                checked={notifications.messages}
                 onChange={(value) =>
-                  setNotifications({
-                    ...notifications,
+                  setNotifications((current) => ({
+                    ...current,
                     messages: value,
-                  })
+                  }))
                 }
               />
 
               <Toggle
-                title="Email Notifications"
-                description="Receive important restaurant updates by email."
-                enabled={notifications.email}
+                label="Email Notifications"
+                description="Receive supported notifications by email."
+                checked={notifications.email}
                 onChange={(value) =>
-                  setNotifications({
-                    ...notifications,
+                  setNotifications((current) => ({
+                    ...current,
                     email: value,
-                  })
+                  }))
                 }
               />
 
               <Toggle
-                title="WhatsApp Notifications"
-                description="Send order and booking alerts on WhatsApp."
-                enabled={notifications.whatsapp}
+                label="WhatsApp Notifications"
+                description="WhatsApp integration can be enabled later."
+                checked={notifications.whatsapp}
                 onChange={(value) =>
-                  setNotifications({
-                    ...notifications,
+                  setNotifications((current) => ({
+                    ...current,
                     whatsapp: value,
-                  })
+                  }))
                 }
               />
             </div>
           </section>
 
-          {/* =====================================================
-              OWNER ACCOUNT
-          ===================================================== */}
-
-          <section className="rounded-2xl border border-white/10 bg-white/[0.025]">
-            <div className="border-b border-white/10 p-5 sm:p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/35">
-                Security
-              </p>
-
-              <h2 className="mt-2 text-xl font-semibold">
+          {/* Owner Account */}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 sm:p-7">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold">
                 Owner Account
-              </h2>
+              </h3>
+
+              <p className="mt-1 text-sm text-white/40">
+                Your restaurant account and login information.
+              </p>
             </div>
 
-            <div className="space-y-6 p-5 sm:p-6">
-              <div className="grid gap-6 md:grid-cols-2">
-                <Input
-                  label="Owner Name"
-                  value={restaurant.owner}
-                  onChange={(value) =>
-                    setRestaurant({
-                      ...restaurant,
-                      owner: value,
-                    })
-                  }
-                />
+            <div className="grid gap-5 md:grid-cols-2">
+              <Input
+                label="Owner Login Email"
+                value={ownerLoginEmail}
+                onChange={() => {}}
+                type="email"
+                disabled
+              />
 
-                <Input
-                  label="Account Email"
-                  value={restaurant.email}
-                  onChange={(value) =>
-                    setRestaurant({
-                      ...restaurant,
-                      email: value,
-                    })
-                  }
-                />
-              </div>
-
-              <div className="flex flex-col justify-between gap-4 rounded-xl border border-white/10 bg-black/30 p-4 sm:flex-row sm:items-center">
-                <div>
-                  <p className="text-sm font-medium">
-                    Account Password
-                  </p>
-
-                  <p className="mt-1 text-xs text-white/35">
-                    Change your owner dashboard password.
-                  </p>
-                </div>
-
+              <div className="flex items-end">
                 <button
                   type="button"
                   onClick={() =>
                     router.push("/forgot-password")
                   }
-                  className="rounded-lg border border-white/10 px-4 py-2 text-sm text-white/70 transition hover:bg-white/[0.06]"
+                  className="w-full rounded-xl border border-white/10 px-4 py-3 text-sm font-medium text-white/70 transition hover:border-[#c9a45c]/40 hover:text-[#c9a45c]"
                 >
                   Change Password
                 </button>
               </div>
-
-              <div className="flex flex-col justify-between gap-4 rounded-xl border border-red-500/10 bg-red-500/[0.025] p-4 sm:flex-row sm:items-center">
-                <div>
-                  <p className="text-sm font-medium text-red-300">
-                    Sign out from this account
-                  </p>
-
-                  <p className="mt-1 text-xs text-white/35">
-                    You will need to login again to access the
-                    owner dashboard.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="rounded-lg border border-red-500/20 px-4 py-2 text-sm text-red-300 transition hover:bg-red-500/10"
-                >
-                  Sign Out
-                </button>
-              </div>
             </div>
+
+            <p className="mt-4 text-xs leading-5 text-white/30">
+              Owner Login Email is your authentication email and
+              cannot be changed from restaurant settings. Business
+              Email above is the public restaurant contact email.
+            </p>
           </section>
 
-          {/* =====================================================
-              SAVE
-          ===================================================== */}
-
-          <div className="flex flex-col items-stretch justify-between gap-4 border-t border-white/10 pt-8 sm:flex-row sm:items-center">
-            <div>
-              <p className="text-sm font-medium">
-                Restaurant configuration
-              </p>
-
-              <p className="mt-1 text-xs text-white/35">
-                Changes are saved securely to your restaurant
-                database.
-              </p>
-            </div>
-
+          {/* Save */}
+          <div className="sticky bottom-4 z-30 flex justify-end">
             <button
+              type="button"
               onClick={handleSave}
               disabled={saving}
-              className="rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-[#c9a45c] px-6 py-3 text-sm font-semibold text-black shadow-2xl shadow-black/40 transition hover:bg-[#d8b875] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {saving
-                ? "Saving..."
-                : saved
-                ? "✓ Saved Successfully"
-                : "Save All Changes"}
+              {saving ? "Saving Changes..." : "Save All Changes"}
             </button>
           </div>
         </div>
       </div>
     </main>
-  );
-}
-
-/* =============================================================
-   INPUT
-============================================================= */
-
-function Input({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-white/35">
-        {label}
-      </span>
-
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-white/25"
-      />
-    </label>
-  );
-}
-
-/* =============================================================
-   TEXTAREA
-============================================================= */
-
-function Textarea({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-white/35">
-        {label}
-      </span>
-
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        rows={4}
-        className="w-full resize-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-white/25"
-      />
-    </label>
-  );
-}
-
-/* =============================================================
-   IMAGE INPUT
-============================================================= */
-
-function ImageInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div>
-      <label className="block">
-        <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-white/35">
-          {label}
-        </span>
-
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none transition focus:border-white/25"
-        />
-      </label>
-
-      {value && (
-        <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black">
-          <img
-            src={value}
-            alt={label}
-            className="h-32 w-full object-cover"
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-            }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* =============================================================
-   TOGGLE
-============================================================= */
-
-function Toggle({
-  title,
-  description,
-  enabled,
-  onChange,
-}: {
-  title: string;
-  description: string;
-  enabled: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-5 rounded-xl border border-white/10 bg-black/20 p-4">
-      <div>
-        <p className="text-sm font-medium">{title}</p>
-
-        <p className="mt-1 text-xs leading-5 text-white/35">
-          {description}
-        </p>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => onChange(!enabled)}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-          enabled ? "bg-white" : "bg-white/10"
-        }`}
-      >
-        <span
-          className={`absolute top-1 h-4 w-4 rounded-full transition ${
-            enabled
-              ? "left-6 bg-black"
-              : "left-1 bg-white/40"
-          }`}
-        />
-      </button>
-    </div>
   );
 }
