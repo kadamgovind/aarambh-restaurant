@@ -1,6 +1,16 @@
 import Link from "next/link";
 
-export default function OurStory() {
+import { getActiveRestaurant } from "@/lib/restaurant";
+
+export default async function OurStory() {
+  const restaurant = await getActiveRestaurant();
+
+  const restaurantName = restaurant?.name || "Aarambh";
+  const city = restaurant?.city || "Pune";
+  const description =
+    restaurant?.description ||
+    "Aarambh is a family-focused restaurant in Narhe, Pune, bringing together traditional Indian flavours, Maharashtrian favourites, popular Chinese classics and tandoor specialties.";
+
   return (
     <section className="border-b border-white/10 bg-black">
       <div className="mx-auto max-w-7xl px-5 py-24 sm:px-6 sm:py-32 lg:px-8">
@@ -18,9 +28,7 @@ export default function OurStory() {
             </h2>
 
             <p className="mt-7 max-w-xl text-base leading-8 text-white/60">
-              Aarambh is a family-focused restaurant in Narhe, Pune,
-              bringing together traditional Indian flavours, Maharashtrian
-              favourites, popular Chinese classics and tandoor specialties.
+              {description}
             </p>
 
             <p className="mt-5 max-w-xl text-base leading-8 text-white/60">
@@ -28,6 +36,10 @@ export default function OurStory() {
               welcoming. Every dish is prepared with carefully selected
               ingredients and a passion for creating a memorable dining
               experience.
+            </p>
+
+            <p className="mt-5 text-xs uppercase tracking-[0.2em] text-white/35">
+              {restaurantName} • {city}
             </p>
 
             <div className="mt-8">
@@ -47,7 +59,7 @@ export default function OurStory() {
           <div className="group relative aspect-[4/5] overflow-hidden rounded-2xl border border-white/10 bg-[#111]">
             <img
               src="/images/restaurant-story.png"
-              alt="Aarambh Restaurant interior"
+              alt={`${restaurantName} interior`}
               loading="lazy"
               className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
             />
@@ -56,7 +68,7 @@ export default function OurStory() {
 
             <div className="absolute bottom-5 left-5">
               <p className="text-[10px] uppercase tracking-[0.3em] text-white/50">
-                Aarambh Restaurant
+                {restaurantName}
               </p>
 
               <p className="mt-1 text-sm text-white/80">
