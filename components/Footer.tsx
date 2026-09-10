@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { getActiveRestaurant } from "@/lib/restaurant";
+
 const exploreLinks = [
   { label: "About", href: "/about" },
   { label: "Menu", href: "/menu" },
@@ -14,7 +16,38 @@ const serviceLinks = [
   { label: "My Account", href: "/account" },
 ];
 
-export default function Footer() {
+export default async function Footer() {
+  const restaurant = await getActiveRestaurant();
+
+  const restaurantName = restaurant?.name || "Aarambh Restaurant";
+
+  const description =
+    restaurant?.description ||
+    "Taste That Feels Like Home. Experience delicious food, warm hospitality and a welcoming family dining environment.";
+
+  const phone = restaurant?.phone || null;
+  const email = restaurant?.email || null;
+
+  const address = restaurant?.address || null;
+  const city = restaurant?.city || null;
+  const state = restaurant?.state || null;
+  const pincode = restaurant?.pincode || null;
+
+  const orderingSettings = restaurant?.ordering_settings || {};
+
+  const diningOptions = [
+    orderingSettings.pickup === true ? "Takeaway" : null,
+    orderingSettings.delivery === true ? "Home Delivery" : null,
+    orderingSettings.tableBooking === true ? "Table Booking" : null,
+  ].filter(Boolean);
+
+  const locationParts = [
+    address,
+    city,
+    state,
+    pincode,
+  ].filter(Boolean);
+
   return (
     <footer className="border-t border-white/10 bg-black">
       <div className="mx-auto max-w-7xl px-5 py-16 sm:px-6 sm:py-20 lg:px-8">
@@ -23,7 +56,7 @@ export default function Footer() {
           <div className="lg:col-span-2">
             <Link href="/" className="group inline-block">
               <h2 className="text-2xl font-semibold tracking-[-0.04em] text-white transition-colors duration-300 group-hover:text-[#c9a45c]">
-                Aarambh
+                {restaurantName}
               </h2>
 
               <p className="mt-1 text-[9px] font-medium uppercase tracking-[0.3em] text-[#c9a45c]">
@@ -32,9 +65,7 @@ export default function Footer() {
             </Link>
 
             <p className="mt-6 max-w-md text-sm leading-7 text-white/45">
-              Taste That Feels Like Home. Experience Indian, Maharashtrian,
-              North Indian, Chinese and Tandoor favourites in a warm family
-              dining environment.
+              {description}
             </p>
 
             {/* CTA */}
@@ -93,63 +124,90 @@ export default function Footer() {
             </nav>
 
             {/* Contact */}
-            <div className="mt-8">
-              <p className="text-[10px] uppercase tracking-[0.25em] text-white/30">
-                Contact
-              </p>
+            {(phone || email) && (
+              <div className="mt-8">
+                <p className="text-[10px] uppercase tracking-[0.25em] text-white/30">
+                  Contact
+                </p>
 
-              <a
-                href="tel:+917498168865"
-                className="mt-3 block text-sm text-white/60 transition-colors hover:text-[#c9a45c]"
-              >
-                +91 74981 68865
-              </a>
+                {phone && (
+                  <a
+                    href={`tel:${phone}`}
+                    className="mt-3 block text-sm text-white/60 transition-colors hover:text-[#c9a45c]"
+                  >
+                    {phone}
+                  </a>
+                )}
 
-              <a
-                href="mailto:fec@aarambhrestaurant.in"
-                className="mt-2 block break-all text-sm text-white/60 transition-colors hover:text-[#c9a45c]"
-              >
-                fec@aarambhrestaurant.in
-              </a>
-            </div>
+                {email && (
+                  <a
+                    href={`mailto:${email}`}
+                    className="mt-2 block break-all text-sm text-white/60 transition-colors hover:text-[#c9a45c]"
+                  >
+                    {email}
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Location */}
+        {/* Location + Dining */}
         <div className="mt-14 grid gap-8 border-t border-white/10 pt-8 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Location */}
           <div>
             <p className="text-[10px] uppercase tracking-[0.25em] text-white/30">
               Location
             </p>
 
             <p className="mt-3 text-sm leading-6 text-white/50">
-              Narhe, Pune
-              <br />
-              Maharashtra – 411041, India
+              {locationParts.length > 0 ? (
+                locationParts.map((part, index) => (
+                  <span key={`${part}-${index}`}>
+                    {part}
+                    {index < locationParts.length - 1 && <br />}
+                  </span>
+                ))
+              ) : (
+                <>
+                  Restaurant location
+                  <br />
+                  Contact us for details
+                </>
+              )}
             </p>
           </div>
 
+          {/* Opening Hours */}
           <div>
             <p className="text-[10px] uppercase tracking-[0.25em] text-white/30">
               Opening Hours
             </p>
 
             <p className="mt-3 text-sm leading-6 text-white/50">
-              Monday – Sunday
+              Check our current opening hours
               <br />
-              11:00 AM – 11:00 PM
+              before your visit.
             </p>
           </div>
 
+          {/* Dining */}
           <div>
             <p className="text-[10px] uppercase tracking-[0.25em] text-white/30">
               Dining
             </p>
 
             <p className="mt-3 text-sm leading-6 text-white/50">
-              Dine-in • Takeaway
-              <br />
-              Home Delivery • Table Booking
+              {diningOptions.length > 0 ? (
+                diningOptions.map((option, index) => (
+                  <span key={String(option)}>
+                    {option}
+                    {index < diningOptions.length - 1 && " • "}
+                  </span>
+                ))
+              ) : (
+                "Dining options available"
+              )}
             </p>
           </div>
         </div>
@@ -157,7 +215,7 @@ export default function Footer() {
         {/* Bottom */}
         <div className="mt-8 flex flex-col gap-5 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-white/30">
-            © {new Date().getFullYear()} Aarambh Restaurant. All rights
+            © {new Date().getFullYear()} {restaurantName}. All rights
             reserved.
           </p>
 
