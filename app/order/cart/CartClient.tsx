@@ -359,7 +359,7 @@ export default function CartClient() {
               </div>
 
               <Link
-                href="/checkout"
+                href="/order/checkout"
                 className="mt-7 block w-full rounded-full bg-[#c9a45c] py-4 text-center text-sm font-medium text-black transition hover:bg-[#d8b873]"
               >
                 Proceed to Checkout
