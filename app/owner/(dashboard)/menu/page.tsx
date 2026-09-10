@@ -15,6 +15,7 @@ type Category = {
 
 type MenuItem = {
   id: string;
+  restaurantId: string;
   name: string;
   description: string;
   price: number;
@@ -24,6 +25,33 @@ type MenuItem = {
   available: boolean;
   popular: boolean;
   image: string;
+  slug: string;
+  displayOrder: number;
+};
+
+type MenuItemRow = {
+  id: string;
+  restaurant_id: string;
+  category_id: string | null;
+  name: string;
+  slug: string;
+  description: string | null;
+  price: number | string;
+  item_type: "veg" | "non_veg";
+  image_url: string | null;
+  is_available: boolean;
+  is_featured: boolean;
+  display_order: number;
+  menu_categories:
+    | {
+        id: string;
+        name: string;
+      }
+    | {
+        id: string;
+        name: string;
+      }[]
+    | null;
 };
 
 type FormState = {
@@ -48,6 +76,36 @@ const emptyForm: FormState = {
   image: "",
 };
 
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function createSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getCategoryName(
+  relation: MenuItemRow["menu_categories"]
+) {
+  if (!relation) {
+    return "Uncategorized";
+  }
+
+  if (Array.isArray(relation)) {
+    return relation[0]?.name || "Uncategorized";
+  }
+
+  return relation.name || "Uncategorized";
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default function MenuPage() {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -69,9 +127,9 @@ export default function MenuPage() {
 
   const [error, setError] = useState("");
 
-  /* =========================
+  /* =======================================================
      LOAD MENU
-  ========================= */
+  ======================================================= */
 
   async function loadMenu() {
     try {
@@ -91,13 +149,16 @@ export default function MenuPage() {
         throw new Error("Please login first.");
       }
 
-      /* Find owner's restaurant */
+      /* ---------------------------------------------------
+         Find owner's restaurant
+      --------------------------------------------------- */
 
-      const { data: restaurant, error: restaurantError } = await supabase
-        .from("restaurants")
-        .select("id")
-        .eq("owner_id", user.id)
-        .maybeSingle();
+      const { data: restaurant, error: restaurantError } =
+        await supabase
+          .from("restaurants")
+          .select("id")
+          .eq("owner_id", user.id)
+          .maybeSingle();
 
       if (restaurantError) {
         throw new Error(restaurantError.message);
@@ -107,20 +168,23 @@ export default function MenuPage() {
         throw new Error("No restaurant found for this account.");
       }
 
-      /* Load active categories */
+      /* ---------------------------------------------------
+         Load categories
+      --------------------------------------------------- */
 
-      const { data: categoryData, error: categoryError } = await supabase
-        .from("menu_categories")
-        .select(
-          "id, name, description, display_order, is_active"
-        )
-        .eq("restaurant_id", restaurant.id)
-        .order("display_order", {
-          ascending: true,
-        })
-        .order("name", {
-          ascending: true,
-        });
+      const { data: categoryData, error: categoryError } =
+        await supabase
+          .from("menu_categories")
+          .select(
+            "id, name, description, display_order, is_active"
+          )
+          .eq("restaurant_id", restaurant.id)
+          .order("display_order", {
+            ascending: true,
+          })
+          .order("name", {
+            ascending: true,
+          });
 
       if (categoryError) {
         throw new Error(categoryError.message);
@@ -130,75 +194,89 @@ export default function MenuPage() {
 
       setCategories(loadedCategories);
 
-      /* Load menu items */
+      /* ---------------------------------------------------
+         Load all owner menu items
 
-      const { data: itemData, error: itemError } = await supabase
-        .from("menu_items")
-        .select(
-          `
-          id,
-          restaurant_id,
-          category_id,
-          name,
-          description,
-          price,
-          image_url,
-          is_veg,
-          is_available,
-          is_featured,
-          sort_order,
-          created_at,
-          updated_at,
-          menu_categories (
+         IMPORTANT:
+         Owner needs unavailable items too.
+         Therefore we intentionally do NOT use
+         is_available = true here.
+      --------------------------------------------------- */
+
+      const { data: itemData, error: itemError } =
+        await supabase
+          .from("menu_items")
+          .select(
+            `
             id,
-            name
+            restaurant_id,
+            category_id,
+            name,
+            slug,
+            description,
+            price,
+            item_type,
+            image_url,
+            is_available,
+            is_featured,
+            display_order,
+            menu_categories (
+              id,
+              name
+            )
+          `
           )
-        `
-        )
-        .eq("restaurant_id", restaurant.id)
-        .order("sort_order", {
-          ascending: true,
-        })
-        .order("created_at", {
-          ascending: false,
-        });
+          .eq("restaurant_id", restaurant.id)
+          .order("display_order", {
+            ascending: true,
+          })
+          .order("created_at", {
+            ascending: false,
+          });
 
       if (itemError) {
         throw new Error(itemError.message);
       }
 
-      const mappedItems: MenuItem[] = (itemData || []).map(
-        (item: any) => ({
-          id: item.id,
-          name: item.name,
-          description: item.description || "",
-          price: Number(item.price || 0),
-          categoryId: item.category_id,
-          category:
-            item.menu_categories?.name ||
-            "Uncategorized",
-          type: item.is_veg ? "Veg" : "Non-Veg",
-          available: item.is_available,
-          popular: item.is_featured,
-          image: item.image_url || "",
-        })
-      );
+      const rows = (itemData || []) as MenuItemRow[];
+
+      const mappedItems: MenuItem[] = rows.map((item) => ({
+        id: item.id,
+        restaurantId: item.restaurant_id,
+        name: item.name,
+        description: item.description || "",
+        price: Number(item.price || 0),
+        categoryId: item.category_id || "",
+        category: getCategoryName(item.menu_categories),
+        type: item.item_type === "veg" ? "Veg" : "Non-Veg",
+        available: item.is_available,
+        popular: item.is_featured,
+        image: item.image_url || "",
+        slug: item.slug,
+        displayOrder: item.display_order,
+      }));
 
       setMenu(mappedItems);
 
-      /* Set first category for add form */
+      /* ---------------------------------------------------
+         Default category
+      --------------------------------------------------- */
 
       if (loadedCategories.length > 0) {
         setForm((previous) => ({
           ...previous,
           categoryId:
-            previous.categoryId ||
-            loadedCategories[0].id,
+            previous.categoryId || loadedCategories[0].id,
         }));
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Menu loading error:", err);
-      setError(err.message || "Failed to load menu.");
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load menu."
+      );
     } finally {
       setLoading(false);
     }
@@ -208,9 +286,9 @@ export default function MenuPage() {
     loadMenu();
   }, []);
 
-  /* =========================
+  /* =======================================================
      FILTER
-  ========================= */
+  ======================================================= */
 
   const filteredMenu = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -238,9 +316,9 @@ export default function MenuPage() {
     });
   }, [menu, search, categoryFilter, typeFilter]);
 
-  /* =========================
+  /* =======================================================
      STATS
-  ========================= */
+  ======================================================= */
 
   const totalItems = menu.length;
 
@@ -256,9 +334,9 @@ export default function MenuPage() {
     (item) => item.popular
   ).length;
 
-  /* =========================
+  /* =======================================================
      OPEN ADD
-  ========================= */
+  ======================================================= */
 
   function openAddModal() {
     setEditingItem(null);
@@ -275,9 +353,9 @@ export default function MenuPage() {
     setError("");
   }
 
-  /* =========================
+  /* =======================================================
      OPEN EDIT
-  ========================= */
+  ======================================================= */
 
   function openEditModal(item: MenuItem) {
     setEditingItem(item);
@@ -297,9 +375,9 @@ export default function MenuPage() {
     setError("");
   }
 
-  /* =========================
+  /* =======================================================
      CLOSE MODAL
-  ========================= */
+  ======================================================= */
 
   function closeModal() {
     if (saving) return;
@@ -316,9 +394,84 @@ export default function MenuPage() {
     });
   }
 
-  /* =========================
+  /* =======================================================
+     CREATE UNIQUE SLUG
+  ======================================================= */
+
+  async function createUniqueSlug(
+    restaurantId: string,
+    name: string,
+    currentItemId?: string
+  ) {
+    const baseSlug = createSlug(name);
+
+    if (!baseSlug) {
+      throw new Error(
+        "Dish name must contain at least one valid character."
+      );
+    }
+
+    let candidate = baseSlug;
+    let suffix = 1;
+
+    while (true) {
+      let query = supabase
+        .from("menu_items")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("slug", candidate)
+        .limit(1);
+
+      if (currentItemId) {
+        query = query.neq("id", currentItemId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw new Error(
+          `Failed to check dish slug: ${error.message}`
+        );
+      }
+
+      if (!data || data.length === 0) {
+        return candidate;
+      }
+
+      suffix += 1;
+      candidate = `${baseSlug}-${suffix}`;
+    }
+  }
+
+  /* =======================================================
+     GET NEXT DISPLAY ORDER
+  ======================================================= */
+
+  async function getNextDisplayOrder(
+    restaurantId: string
+  ) {
+    const { data, error } = await supabase
+      .from("menu_items")
+      .select("display_order")
+      .eq("restaurant_id", restaurantId)
+      .order("display_order", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `Failed to determine display order: ${error.message}`
+      );
+    }
+
+    return Number(data?.display_order ?? -1) + 1;
+  }
+
+  /* =======================================================
      SAVE MENU ITEM
-  ========================= */
+  ======================================================= */
 
   async function handleSubmit(
     e: React.FormEvent<HTMLFormElement>
@@ -337,13 +490,170 @@ export default function MenuPage() {
 
     const price = Number(form.price);
 
-    if (!form.price || Number.isNaN(price) || price < 0) {
+    if (
+      !form.price ||
+      Number.isNaN(price) ||
+      price < 0
+    ) {
       setError("Please enter a valid price.");
       return;
     }
 
     try {
       setSaving(true);
+      setError("");
+
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError) {
+        throw new Error(authError.message);
+      }
+
+      if (!user) {
+        throw new Error("Please login first.");
+      }
+
+      /* ---------------------------------------------------
+         Find restaurant
+      --------------------------------------------------- */
+
+      const { data: restaurant, error: restaurantError } =
+        await supabase
+          .from("restaurants")
+          .select("id")
+          .eq("owner_id", user.id)
+          .maybeSingle();
+
+      if (restaurantError) {
+        throw new Error(restaurantError.message);
+      }
+
+      if (!restaurant) {
+        throw new Error(
+          "No restaurant found for this account."
+        );
+      }
+
+      /* ---------------------------------------------------
+         UPDATE
+      --------------------------------------------------- */
+
+      if (editingItem) {
+        let slug = editingItem.slug;
+
+        /*
+          Only create a new slug when the dish name changes.
+          This prevents unnecessary slug changes during normal edits.
+        */
+
+        if (
+          form.name.trim().toLowerCase() !==
+          editingItem.name.trim().toLowerCase()
+        ) {
+          slug = await createUniqueSlug(
+            restaurant.id,
+            form.name,
+            editingItem.id
+          );
+        }
+
+        const { error: updateError } =
+          await supabase
+            .from("menu_items")
+            .update({
+              category_id: form.categoryId,
+              name: form.name.trim(),
+              slug,
+              description:
+                form.description.trim() || null,
+              price,
+              item_type:
+                form.type === "Veg"
+                  ? "veg"
+                  : "non_veg",
+              image_url:
+                form.image.trim() || null,
+              is_available: form.available,
+              is_featured: form.popular,
+            })
+            .eq("id", editingItem.id)
+            .eq(
+              "restaurant_id",
+              restaurant.id
+            );
+
+        if (updateError) {
+          throw new Error(updateError.message);
+        }
+      } else {
+        /* -------------------------------------------------
+           INSERT
+        ------------------------------------------------- */
+
+        const slug = await createUniqueSlug(
+          restaurant.id,
+          form.name
+        );
+
+        const displayOrder =
+          await getNextDisplayOrder(
+            restaurant.id
+          );
+
+        const { error: insertError } =
+          await supabase
+            .from("menu_items")
+            .insert({
+              restaurant_id: restaurant.id,
+              category_id: form.categoryId,
+              name: form.name.trim(),
+              slug,
+              description:
+                form.description.trim() || null,
+              price,
+              item_type:
+                form.type === "Veg"
+                  ? "veg"
+                  : "non_veg",
+              image_url:
+                form.image.trim() || null,
+              is_available: form.available,
+              is_featured: form.popular,
+              display_order: displayOrder,
+            });
+
+        if (insertError) {
+          throw new Error(insertError.message);
+        }
+      }
+
+      closeModal();
+      await loadMenu();
+    } catch (err) {
+      console.error("Menu save error:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save dish."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* =======================================================
+     TOGGLE AVAILABILITY
+  ======================================================= */
+
+  async function toggleAvailability(
+    item: MenuItem
+  ) {
+    try {
+      setActionId(item.id);
       setError("");
 
       const {
@@ -376,78 +686,17 @@ export default function MenuPage() {
         );
       }
 
-      if (editingItem) {
-        /* UPDATE */
-
-        const { error: updateError } = await supabase
+      const { error: updateError } =
+        await supabase
           .from("menu_items")
           .update({
-            category_id: form.categoryId,
-            name: form.name.trim(),
-            description:
-              form.description.trim() || null,
-            price,
-            image_url:
-              form.image.trim() || null,
-            is_veg: form.type === "Veg",
-            is_available: form.available,
-            is_featured: form.popular,
+            is_available: !item.available,
           })
-          .eq("id", editingItem.id)
-          .eq("restaurant_id", restaurant.id);
-
-        if (updateError) {
-          throw new Error(updateError.message);
-        }
-      } else {
-        /* INSERT */
-
-        const { error: insertError } = await supabase
-          .from("menu_items")
-          .insert({
-            restaurant_id: restaurant.id,
-            category_id: form.categoryId,
-            name: form.name.trim(),
-            description:
-              form.description.trim() || null,
-            price,
-            image_url:
-              form.image.trim() || null,
-            is_veg: form.type === "Veg",
-            is_available: form.available,
-            is_featured: form.popular,
-          });
-
-        if (insertError) {
-          throw new Error(insertError.message);
-        }
-      }
-
-      closeModal();
-      await loadMenu();
-    } catch (err: any) {
-      console.error("Menu save error:", err);
-      setError(err.message || "Failed to save dish.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  /* =========================
-     TOGGLE AVAILABLE
-  ========================= */
-
-  async function toggleAvailability(item: MenuItem) {
-    try {
-      setActionId(item.id);
-      setError("");
-
-      const { error: updateError } = await supabase
-        .from("menu_items")
-        .update({
-          is_available: !item.available,
-        })
-        .eq("id", item.id);
+          .eq("id", item.id)
+          .eq(
+            "restaurant_id",
+            restaurant.id
+          );
 
       if (updateError) {
         throw new Error(updateError.message);
@@ -458,41 +707,80 @@ export default function MenuPage() {
           menuItem.id === item.id
             ? {
                 ...menuItem,
-                available: !menuItem.available,
+                available:
+                  !menuItem.available,
               }
             : menuItem
         )
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error(
         "Availability update error:",
         err
       );
 
       setError(
-        err.message ||
-          "Failed to update availability."
+        err instanceof Error
+          ? err.message
+          : "Failed to update availability."
       );
     } finally {
       setActionId(null);
     }
   }
 
-  /* =========================
-     TOGGLE POPULAR
-  ========================= */
+  /* =======================================================
+     TOGGLE FEATURED
+  ======================================================= */
 
-  async function togglePopular(item: MenuItem) {
+  async function togglePopular(
+    item: MenuItem
+  ) {
     try {
       setActionId(item.id);
       setError("");
 
-      const { error: updateError } = await supabase
-        .from("menu_items")
-        .update({
-          is_featured: !item.popular,
-        })
-        .eq("id", item.id);
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError) {
+        throw new Error(authError.message);
+      }
+
+      if (!user) {
+        throw new Error("Please login first.");
+      }
+
+      const { data: restaurant, error: restaurantError } =
+        await supabase
+          .from("restaurants")
+          .select("id")
+          .eq("owner_id", user.id)
+          .maybeSingle();
+
+      if (restaurantError) {
+        throw new Error(restaurantError.message);
+      }
+
+      if (!restaurant) {
+        throw new Error(
+          "No restaurant found for this account."
+        );
+      }
+
+      const { error: updateError } =
+        await supabase
+          .from("menu_items")
+          .update({
+            is_featured: !item.popular,
+          })
+          .eq("id", item.id)
+          .eq(
+            "restaurant_id",
+            restaurant.id
+          );
 
       if (updateError) {
         throw new Error(updateError.message);
@@ -503,29 +791,31 @@ export default function MenuPage() {
           menuItem.id === item.id
             ? {
                 ...menuItem,
-                popular: !menuItem.popular,
+                popular:
+                  !menuItem.popular,
               }
             : menuItem
         )
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error(
         "Featured update error:",
         err
       );
 
       setError(
-        err.message ||
-          "Failed to update featured status."
+        err instanceof Error
+          ? err.message
+          : "Failed to update featured status."
       );
     } finally {
       setActionId(null);
     }
   }
 
-  /* =========================
+  /* =======================================================
      DELETE
-  ========================= */
+  ======================================================= */
 
   async function confirmDelete() {
     if (!deleteItem) return;
@@ -534,10 +824,45 @@ export default function MenuPage() {
       setDeleting(true);
       setError("");
 
-      const { error: deleteError } = await supabase
-        .from("menu_items")
-        .delete()
-        .eq("id", deleteItem.id);
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError) {
+        throw new Error(authError.message);
+      }
+
+      if (!user) {
+        throw new Error("Please login first.");
+      }
+
+      const { data: restaurant, error: restaurantError } =
+        await supabase
+          .from("restaurants")
+          .select("id")
+          .eq("owner_id", user.id)
+          .maybeSingle();
+
+      if (restaurantError) {
+        throw new Error(restaurantError.message);
+      }
+
+      if (!restaurant) {
+        throw new Error(
+          "No restaurant found for this account."
+        );
+      }
+
+      const { error: deleteError } =
+        await supabase
+          .from("menu_items")
+          .delete()
+          .eq("id", deleteItem.id)
+          .eq(
+            "restaurant_id",
+            restaurant.id
+          );
 
       if (deleteError) {
         throw new Error(deleteError.message);
@@ -545,27 +870,37 @@ export default function MenuPage() {
 
       setMenu((previous) =>
         previous.filter(
-          (item) => item.id !== deleteItem.id
+          (item) =>
+            item.id !== deleteItem.id
         )
       );
 
       setDeleteItem(null);
-    } catch (err: any) {
-      console.error("Menu delete error:", err);
+    } catch (err) {
+      console.error(
+        "Menu delete error:",
+        err
+      );
 
       setError(
-        err.message || "Failed to delete dish."
+        err instanceof Error
+          ? err.message
+          : "Failed to delete dish."
       );
     } finally {
       setDeleting(false);
     }
   }
 
+  /* =======================================================
+     RENDER
+  ======================================================= */
+
   return (
     <main className="min-h-screen bg-[#080808] text-white">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
-        {/* ================= HEADER ================= */}
+        {/* HEADER */}
 
         <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div>
@@ -591,7 +926,7 @@ export default function MenuPage() {
           </button>
         </div>
 
-        {/* ================= ERROR ================= */}
+        {/* ERROR */}
 
         {error && (
           <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-4 text-sm text-red-300 sm:flex-row sm:items-center sm:justify-between">
@@ -606,7 +941,7 @@ export default function MenuPage() {
           </div>
         )}
 
-        {/* ================= NO CATEGORY WARNING ================= */}
+        {/* NO CATEGORY */}
 
         {!loading && categories.length === 0 && (
           <div className="mb-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-5">
@@ -615,9 +950,8 @@ export default function MenuPage() {
             </p>
 
             <p className="mt-1 text-sm text-yellow-200/60">
-              Create at least one category in
+              Create at least one category in{" "}
               <span className="font-medium">
-                {" "}
                 menu_categories
               </span>{" "}
               before adding dishes.
@@ -625,10 +959,9 @@ export default function MenuPage() {
           </div>
         )}
 
-        {/* ================= STATS ================= */}
+        {/* STATS */}
 
         <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-
           <StatCard
             title="Total Dishes"
             value={loading ? "—" : totalItems}
@@ -648,25 +981,20 @@ export default function MenuPage() {
             title="Featured"
             value={loading ? "—" : popularItems}
           />
-
         </div>
 
-        {/* ================= FILTERS ================= */}
+        {/* FILTERS */}
 
         <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-
           <div className="grid gap-3 md:grid-cols-[1fr_200px_160px]">
-
-            <div className="relative">
-              <input
-                value={search}
-                onChange={(e) =>
-                  setSearch(e.target.value)
-                }
-                placeholder="Search dishes..."
-                className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none placeholder:text-white/25 focus:border-white/30"
-              />
-            </div>
+            <input
+              value={search}
+              onChange={(e) =>
+                setSearch(e.target.value)
+              }
+              placeholder="Search dishes..."
+              className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none placeholder:text-white/25 focus:border-white/30"
+            />
 
             <select
               value={categoryFilter}
@@ -689,6 +1017,9 @@ export default function MenuPage() {
                   className="bg-black"
                 >
                   {category.name}
+                  {!category.is_active
+                    ? " (Inactive)"
+                    : ""}
                 </option>
               ))}
             </select>
@@ -721,11 +1052,10 @@ export default function MenuPage() {
                 Non-Veg
               </option>
             </select>
-
           </div>
         </div>
 
-        {/* ================= LOADING ================= */}
+        {/* CONTENT */}
 
         {loading ? (
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -739,8 +1069,6 @@ export default function MenuPage() {
             )}
           </div>
         ) : filteredMenu.length === 0 ? (
-          /* ================= EMPTY ================= */
-
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] py-20 text-center">
             <div className="text-4xl">🍽️</div>
 
@@ -761,8 +1089,6 @@ export default function MenuPage() {
             </button>
           </div>
         ) : (
-          /* ================= MENU GRID ================= */
-
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {filteredMenu.map((item) => (
               <MenuCard
@@ -787,15 +1113,15 @@ export default function MenuPage() {
         )}
       </div>
 
-      {/* ================= ADD / EDIT MODAL ================= */}
+      {/* ===================================================
+          ADD / EDIT MODAL
+      =================================================== */}
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-[#111111] shadow-2xl">
 
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
-
               <div>
                 <h2 className="text-xl font-semibold">
                   {editingItem
@@ -812,19 +1138,18 @@ export default function MenuPage() {
 
               <button
                 onClick={closeModal}
-                className="rounded-lg px-3 py-2 text-white/50 hover:bg-white/5 hover:text-white"
+                disabled={saving}
+                className="rounded-lg px-3 py-2 text-white/50 hover:bg-white/5 hover:text-white disabled:opacity-40"
               >
                 ✕
               </button>
-
             </div>
 
             <form
               onSubmit={handleSubmit}
               className="space-y-5 p-6"
             >
-
-              {/* Image */}
+              {/* IMAGE */}
 
               <div>
                 <label className="mb-2 block text-sm font-medium">
@@ -858,7 +1183,7 @@ export default function MenuPage() {
                 )}
               </div>
 
-              {/* Name */}
+              {/* NAME */}
 
               <div>
                 <label className="mb-2 block text-sm font-medium">
@@ -876,9 +1201,13 @@ export default function MenuPage() {
                   placeholder="e.g. Paneer Tikka"
                   className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none placeholder:text-white/20 focus:border-white/30"
                 />
+
+                <p className="mt-2 text-xs text-white/25">
+                  A unique menu slug will be generated automatically.
+                </p>
               </div>
 
-              {/* Description */}
+              {/* DESCRIPTION */}
 
               <div>
                 <label className="mb-2 block text-sm font-medium">
@@ -900,10 +1229,9 @@ export default function MenuPage() {
                 />
               </div>
 
-              {/* Price + Category */}
+              {/* PRICE + CATEGORY */}
 
               <div className="grid gap-4 sm:grid-cols-2">
-
                 <div>
                   <label className="mb-2 block text-sm font-medium">
                     Price
@@ -956,15 +1284,17 @@ export default function MenuPage() {
                           className="bg-black"
                         >
                           {category.name}
+                          {!category.is_active
+                            ? " (Inactive)"
+                            : ""}
                         </option>
                       )
                     )}
                   </select>
                 </div>
-
               </div>
 
-              {/* Food Type */}
+              {/* FOOD TYPE */}
 
               <div>
                 <label className="mb-2 block text-sm font-medium">
@@ -972,7 +1302,6 @@ export default function MenuPage() {
                 </label>
 
                 <div className="grid grid-cols-2 gap-3">
-
                   <button
                     type="button"
                     onClick={() =>
@@ -1006,14 +1335,12 @@ export default function MenuPage() {
                   >
                     ● Non-Veg
                   </button>
-
                 </div>
               </div>
 
-              {/* Toggles */}
+              {/* TOGGLES */}
 
               <div className="grid gap-3 sm:grid-cols-2">
-
                 <Toggle
                   label="Available"
                   description="Customers can order this dish."
@@ -1037,13 +1364,11 @@ export default function MenuPage() {
                     })
                   }
                 />
-
               </div>
 
-              {/* Buttons */}
+              {/* BUTTONS */}
 
               <div className="flex flex-col-reverse gap-3 pt-3 sm:flex-row sm:justify-end">
-
                 <button
                   type="button"
                   onClick={closeModal}
@@ -1064,21 +1389,19 @@ export default function MenuPage() {
                     ? "Save Changes"
                     : "Add Dish"}
                 </button>
-
               </div>
-
             </form>
           </div>
         </div>
       )}
 
-      {/* ================= DELETE MODAL ================= */}
+      {/* ===================================================
+          DELETE MODAL
+      =================================================== */}
 
       {deleteItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-
           <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#111111] p-6 shadow-2xl">
-
             <div className="mb-5">
               <div className="mb-3 text-3xl">
                 🗑️
@@ -1098,13 +1421,12 @@ export default function MenuPage() {
             </div>
 
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-
               <button
                 onClick={() =>
                   setDeleteItem(null)
                 }
                 disabled={deleting}
-                className="rounded-xl border border-white/10 px-5 py-3 text-sm font-medium text-white/60 hover:bg-white/5 hover:text-white"
+                className="rounded-xl border border-white/10 px-5 py-3 text-sm font-medium text-white/60 hover:bg-white/5 hover:text-white disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -1118,7 +1440,6 @@ export default function MenuPage() {
                   ? "Deleting..."
                   : "Delete Dish"}
               </button>
-
             </div>
           </div>
         </div>
@@ -1178,7 +1499,6 @@ function MenuCard({
       {/* IMAGE */}
 
       <div className="relative h-52 bg-white/[0.04]">
-
         {item.image ? (
           <img
             src={item.image}
@@ -1195,14 +1515,11 @@ function MenuCard({
           </div>
         )}
 
-        {/* Overlay */}
-
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
 
-        {/* Food type */}
+        {/* FOOD TYPE */}
 
         <div className="absolute left-3 top-3">
-
           <span
             className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
               item.type === "Veg"
@@ -1212,10 +1529,9 @@ function MenuCard({
           >
             ● {item.type}
           </span>
-
         </div>
 
-        {/* Featured */}
+        {/* FEATURED */}
 
         {item.popular && (
           <button
@@ -1227,22 +1543,19 @@ function MenuCard({
           </button>
         )}
 
-        {/* Price */}
+        {/* PRICE */}
 
         <div className="absolute bottom-3 left-4">
           <p className="text-xl font-semibold">
             ₹{item.price.toLocaleString("en-IN")}
           </p>
         </div>
-
       </div>
 
       {/* CONTENT */}
 
       <div className="p-5">
-
         <div className="mb-2 flex items-start justify-between gap-3">
-
           <div>
             <p className="text-xs text-white/35">
               {item.category}
@@ -1265,7 +1578,6 @@ function MenuCard({
           >
             ★
           </button>
-
         </div>
 
         <p className="min-h-[48px] text-sm leading-6 text-white/40">
@@ -1273,10 +1585,9 @@ function MenuCard({
             "No description added."}
         </p>
 
-        {/* Availability */}
+        {/* AVAILABILITY */}
 
         <div className="mt-5 flex items-center justify-between border-t border-white/10 pt-4">
-
           <button
             onClick={onToggleAvailability}
             disabled={isActionLoading}
@@ -1308,13 +1619,11 @@ function MenuCard({
               Updating...
             </span>
           )}
-
         </div>
 
-        {/* Actions */}
+        {/* ACTIONS */}
 
         <div className="mt-4 grid grid-cols-2 gap-3">
-
           <button
             onClick={onEdit}
             className="rounded-xl border border-white/10 px-4 py-3 text-sm font-medium text-white/70 transition hover:bg-white/5 hover:text-white"
@@ -1328,9 +1637,7 @@ function MenuCard({
           >
             Delete
           </button>
-
         </div>
-
       </div>
     </div>
   );
