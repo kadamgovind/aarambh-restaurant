@@ -1,6 +1,12 @@
 import Link from "next/link";
 
-export default function FinalCTA() {
+import { getActiveRestaurant } from "@/lib/restaurant";
+
+export default async function FinalCTA() {
+  const restaurant = await getActiveRestaurant();
+
+  const restaurantName = restaurant?.name || "Aarambh Restaurant";
+
   return (
     <section className="relative overflow-hidden bg-[#0a0a0a]">
       {/* Subtle background glow */}
@@ -19,8 +25,8 @@ export default function FinalCTA() {
 
         <p className="mx-auto mt-7 max-w-2xl text-base leading-8 text-white/50">
           Bring your family, friends or someone special and experience
-          delicious food, warm hospitality and the welcoming spirit of
-          Aarambh Restaurant.
+          delicious food, warm hospitality and the welcoming spirit of{" "}
+          {restaurantName}.
         </p>
 
         {/* CTA Buttons */}
@@ -44,7 +50,7 @@ export default function FinalCTA() {
         {/* Restaurant identity */}
         <div className="mx-auto mt-12 flex items-center justify-center gap-3 text-[10px] uppercase tracking-[0.25em] text-white/25">
           <span className="h-px w-8 bg-white/10" />
-          <span>AARAMBH RESTAURANT</span>
+          <span>{restaurantName}</span>
           <span className="h-px w-8 bg-white/10" />
         </div>
       </div>
