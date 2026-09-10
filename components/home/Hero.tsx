@@ -1,7 +1,36 @@
 import Link from "next/link";
 import { Phone, MessageCircle } from "lucide-react";
 
-export default function Hero() {
+import { getActiveRestaurant } from "@/lib/restaurant";
+
+export default async function Hero() {
+  const restaurant = await getActiveRestaurant();
+
+  const restaurantName = restaurant?.name || "Aarambh";
+  const city = restaurant?.city || "Pune";
+  const state = restaurant?.state || "Maharashtra";
+
+  const description =
+    restaurant?.description ||
+    "Authentic Indian flavours, Maharashtrian favourites, Chinese classics and tandoor specialties — served with warmth in Narhe, Pune.";
+
+  const phone = restaurant?.phone || "+917498168865";
+
+  const cleanPhone = phone.replace(/\D/g, "");
+
+  const whatsappNumber = cleanPhone.startsWith("91")
+    ? cleanPhone
+    : `91${cleanPhone}`;
+
+  const restaurantStatus = restaurant?.restaurant_status || "open";
+
+  const statusLabel =
+    restaurantStatus === "open"
+      ? "Open Now"
+      : restaurantStatus === "temporarily_closed"
+        ? "Temporarily Closed"
+        : "Closed";
+
   return (
     <section className="relative min-h-screen overflow-hidden bg-black">
       {/* Background Image */}
@@ -26,7 +55,7 @@ export default function Hero() {
             <span className="h-px w-8 bg-[#c9a45c]/60 sm:w-12" />
 
             <p className="text-[10px] font-medium uppercase tracking-[0.35em] text-[#c9a45c] sm:text-xs">
-              Family Restaurant • Narhe, Pune
+              Family Restaurant • {city}, {state}
             </p>
 
             <span className="h-px w-8 bg-[#c9a45c]/60 sm:w-12" />
@@ -34,12 +63,37 @@ export default function Hero() {
 
           {/* Restaurant Name */}
           <h1 className="text-5xl font-semibold leading-[0.95] tracking-[-0.06em] text-white sm:text-7xl md:text-8xl lg:text-9xl">
-            Aarambh
+            {restaurantName}
           </h1>
 
           <p className="mt-4 text-sm font-medium uppercase tracking-[0.28em] text-white/70 sm:text-base">
             Restaurant
           </p>
+
+          {/* Restaurant Status */}
+          <div className="mt-5 flex justify-center">
+            <span
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.18em] backdrop-blur-md ${
+                restaurantStatus === "open"
+                  ? "border-green-400/20 bg-green-400/10 text-green-300"
+                  : restaurantStatus === "temporarily_closed"
+                    ? "border-yellow-400/20 bg-yellow-400/10 text-yellow-300"
+                    : "border-red-400/20 bg-red-400/10 text-red-300"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  restaurantStatus === "open"
+                    ? "bg-green-400"
+                    : restaurantStatus === "temporarily_closed"
+                      ? "bg-yellow-400"
+                      : "bg-red-400"
+                }`}
+              />
+
+              {statusLabel}
+            </span>
+          </div>
 
           {/* Tagline */}
           <p className="mx-auto mt-7 max-w-2xl text-xl font-medium leading-8 text-white/90 sm:text-2xl md:text-3xl">
@@ -48,9 +102,7 @@ export default function Hero() {
 
           {/* Description */}
           <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-white/55 sm:text-base">
-            Authentic Indian flavours, Maharashtrian favourites, Chinese
-            classics and tandoor specialties — served with warmth in Narhe,
-            Pune.
+            {description}
           </p>
 
           {/* Primary Actions */}
@@ -74,7 +126,7 @@ export default function Hero() {
           {/* Contact Actions */}
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
             <a
-              href="tel:+917498168865"
+              href={`tel:${phone}`}
               className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-black/20 px-5 text-xs font-medium text-white/65 backdrop-blur-md transition-all duration-300 hover:border-white/20 hover:text-white"
             >
               <Phone size={14} strokeWidth={1.8} />
@@ -82,7 +134,7 @@ export default function Hero() {
             </a>
 
             <a
-              href="https://wa.me/917498168865"
+              href={`https://wa.me/${whatsappNumber}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/10 bg-black/20 px-5 text-xs font-medium text-white/65 backdrop-blur-md transition-all duration-300 hover:border-[#c9a45c]/50 hover:text-[#c9a45c]"
