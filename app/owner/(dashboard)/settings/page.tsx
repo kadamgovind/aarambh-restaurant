@@ -592,19 +592,6 @@ export default function OwnerSettingsPage() {
         return;
       }
 
-      const { error: profileUpdateError } = await supabase
-        .from("profiles")
-        .update({
-          full_name: restaurant.name.trim(),
-          phone: cleanPhone || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
-
-      if (profileUpdateError) {
-        console.error(profileUpdateError);
-      }
-
       setSuccess("Restaurant settings saved successfully.");
 
       window.scrollTo({
