@@ -45,7 +45,7 @@ export default function BookingPage() {
       setCheckingUser(false);
     }
 
-    loadUser();
+    void loadUser();
   }, [router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -76,7 +76,6 @@ export default function BookingPage() {
     }
 
     try {
-      // Get the AURA restaurant
       const {
         data: restaurant,
         error: restaurantError,
@@ -99,8 +98,6 @@ export default function BookingPage() {
         return;
       }
 
-      // Convert 12:00 PM -> 12:00
-      // Convert 7:30 PM -> 19:30
       const reservationTime = convertTo24Hour(time);
 
       const { error: reservationError } = await supabase
@@ -144,7 +141,9 @@ export default function BookingPage() {
 
   function convertTo24Hour(time: string) {
     const [timePart, modifier] = time.split(" ");
-    let [hours, minutes] = timePart.split(":").map(Number);
+    const [hoursValue, minutes] = timePart.split(":").map(Number);
+
+    let hours = hoursValue;
 
     if (modifier === "PM" && hours !== 12) {
       hours += 12;
@@ -205,12 +204,9 @@ export default function BookingPage() {
       <section className="bg-[#0a0a0a]">
         <div className="mx-auto max-w-7xl px-6 py-16 sm:py-24 lg:px-8">
           <div className="grid gap-12 lg:grid-cols-[1fr_0.65fr] lg:gap-20">
-
             <div className="rounded-2xl border border-white/10 bg-black p-6 sm:p-8 lg:p-10">
-
               {submitted ? (
                 <div className="flex min-h-[500px] flex-col items-center justify-center text-center">
-
                   <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[#c9a45c]/40">
                     <span className="text-2xl text-[#c9a45c]">
                       ✓
@@ -261,7 +257,6 @@ export default function BookingPage() {
                     className="mt-10 space-y-7"
                   >
                     <div className="grid gap-6 sm:grid-cols-2">
-
                       <div>
                         <label
                           htmlFor="date"
@@ -443,7 +438,6 @@ export default function BookingPage() {
               </h2>
 
               <div className="mt-10 space-y-8">
-
                 <div className="border-t border-white/10 pt-6">
                   <p className="text-xs uppercase tracking-[0.2em] text-white/35">
                     Location
@@ -479,7 +473,6 @@ export default function BookingPage() {
                     hello@aura-restaurant.com
                   </p>
                 </div>
-
               </div>
 
               <div className="mt-10 rounded-2xl border border-[#c9a45c]/20 bg-[#c9a45c]/5 p-6">
@@ -493,7 +486,6 @@ export default function BookingPage() {
                 </p>
               </div>
             </aside>
-
           </div>
         </div>
       </section>

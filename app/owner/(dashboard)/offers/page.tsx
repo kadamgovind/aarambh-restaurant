@@ -157,81 +157,99 @@ export default function OffersPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadOffers() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) throw userError;
-
-      if (!user) {
-        throw new Error("Please login first.");
-      }
-
-      const { data: restaurant, error: restaurantError } =
-        await supabase
-          .from("restaurants")
-          .select("id")
-          .eq("owner_id", user.id)
-          .maybeSingle();
-
-      if (restaurantError) throw restaurantError;
-
-      if (!restaurant) {
-        throw new Error(
-          "No restaurant is connected to this owner account."
-        );
-      }
-
-      setRestaurantId(restaurant.id);
-
-      const { data, error: offersError } = await supabase
-        .from("offers")
-        .select(
-          `
-            id,
-            restaurant_id,
-            code,
-            title,
-            description,
-            type,
-            value,
-            min_order,
-            max_discount,
-            usage_count,
-            usage_limit,
-            start_date,
-            end_date,
-            is_active
-          `
-        )
-        .eq("restaurant_id", restaurant.id)
-        .order("created_at", { ascending: false });
-
-      if (offersError) throw offersError;
-
-      setOffers((data ?? []).map((row) => mapOffer(row as OfferRow)));
-    } catch (err) {
-      console.error("Offers loading error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load offers."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    loadOffers();
-  }, []);
+    let cancelled = false;
+
+    async function loadOffers() {
+      try {
+        if (!cancelled) {
+          setLoading(true);
+          setError("");
+        }
+
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError) throw userError;
+
+        if (!user) {
+          throw new Error("Please login first.");
+        }
+
+        const { data: restaurant, error: restaurantError } =
+          await supabase
+            .from("restaurants")
+            .select("id")
+            .eq("owner_id", user.id)
+            .maybeSingle();
+
+        if (restaurantError) throw restaurantError;
+
+        if (!restaurant) {
+          throw new Error(
+            "No restaurant is connected to this owner account."
+          );
+        }
+
+        if (cancelled) return;
+
+        setRestaurantId(restaurant.id);
+
+        const { data, error: offersError } = await supabase
+          .from("offers")
+          .select(
+            `
+              id,
+              restaurant_id,
+              code,
+              title,
+              description,
+              type,
+              value,
+              min_order,
+              max_discount,
+              usage_count,
+              usage_limit,
+              start_date,
+              end_date,
+              is_active
+            `
+          )
+          .eq("restaurant_id", restaurant.id)
+          .order("created_at", { ascending: false });
+
+        if (offersError) throw offersError;
+
+        if (cancelled) return;
+
+        setOffers((data ?? []).map((row) => mapOffer(row as OfferRow)));
+      } catch (err: unknown) {
+        if (cancelled) return;
+
+        console.error("Offers loading error:", err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load offers."
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadOffers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   const activeOffers = useMemo(
     () => offers.filter((offer) => offer.status === "Active").length,
@@ -394,8 +412,8 @@ export default function OffersPage() {
       }
 
       closeModal();
-      await loadOffers();
-    } catch (err) {
+      setRefreshKey((current) => current + 1);
+    } catch (err: unknown) {
       console.error("Offer save error:", err);
 
       setError(
@@ -409,6 +427,11 @@ export default function OffersPage() {
   }
 
   async function toggleOffer(offer: Offer) {
+    if (!restaurantId) {
+      setError("Restaurant not found.");
+      return;
+    }
+
     try {
       setError("");
 
@@ -424,8 +447,8 @@ export default function OffersPage() {
 
       if (updateError) throw updateError;
 
-      await loadOffers();
-    } catch (err) {
+      setRefreshKey((current) => current + 1);
+    } catch (err: unknown) {
       console.error("Offer toggle error:", err);
 
       setError(
@@ -452,8 +475,8 @@ export default function OffersPage() {
       if (deleteError) throw deleteError;
 
       setDeleteOffer(null);
-      await loadOffers();
-    } catch (err) {
+      setRefreshKey((current) => current + 1);
+    } catch (err: unknown) {
       console.error("Offer delete error:", err);
 
       setError(
@@ -499,7 +522,9 @@ export default function OffersPage() {
             <p className="text-sm text-red-400">{error}</p>
 
             <button
-              onClick={loadOffers}
+              onClick={() =>
+                setRefreshKey((current) => current + 1)
+              }
               className="rounded-lg border border-red-500/20 px-4 py-2 text-sm text-red-300 hover:bg-red-500/10"
             >
               Retry
@@ -598,7 +623,6 @@ export default function OffersPage() {
             )}
           </div>
         ) : (
-          /* OFFERS */
           <div className="grid gap-5 lg:grid-cols-2">
             {filteredOffers.map((offer) => {
               const progress =

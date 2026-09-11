@@ -1,6 +1,10 @@
-import Link from "next/link";
+"use client";
 
-import { getActiveRestaurant } from "@/lib/restaurant";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+
+import { supabase } from "@/lib/supabase";
+import type { Restaurant } from "@/lib/restaurant";
 
 const exploreLinks = [
   { label: "About", href: "/about" },
@@ -16,10 +20,70 @@ const serviceLinks = [
   { label: "My Account", href: "/account" },
 ];
 
-export default async function Footer() {
-  const restaurant = await getActiveRestaurant();
+export default function Footer() {
+  const [restaurant, setRestaurant] =
+    useState<Restaurant | null>(null);
 
-  const restaurantName = restaurant?.name || "Aarambh Restaurant";
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRestaurant = async () => {
+      const { data, error } = await supabase
+        .from("restaurants")
+        .select(`
+          id,
+          owner_id,
+          name,
+          slug,
+          description,
+          phone,
+          email,
+          address,
+          city,
+          state,
+          pincode,
+          logo_url,
+          cover_image_url,
+          maps_url,
+          is_active,
+          restaurant_status,
+          opening_hours,
+          ordering_settings,
+          payment_settings,
+          notification_settings,
+          created_at,
+          updated_at
+        `)
+        .eq("is_active", true)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (cancelled) {
+        return;
+      }
+
+      if (error) {
+        console.error(
+          "Failed to load active restaurant:",
+          error
+        );
+        setRestaurant(null);
+        return;
+      }
+
+      setRestaurant(data as Restaurant | null);
+    };
+
+    void loadRestaurant();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const restaurantName =
+    restaurant?.name || "Aarambh Restaurant";
 
   const description =
     restaurant?.description ||
@@ -33,20 +97,25 @@ export default async function Footer() {
   const state = restaurant?.state || null;
   const pincode = restaurant?.pincode || null;
 
-  const orderingSettings = restaurant?.ordering_settings || {};
+  const orderingSettings =
+    restaurant?.ordering_settings || {};
 
   const diningOptions = [
     orderingSettings.pickup === true ? "Takeaway" : null,
-    orderingSettings.delivery === true ? "Home Delivery" : null,
-    orderingSettings.tableBooking === true ? "Table Booking" : null,
-  ].filter(Boolean);
+    orderingSettings.delivery === true
+      ? "Home Delivery"
+      : null,
+    orderingSettings.tableBooking === true
+      ? "Table Booking"
+      : null,
+  ].filter(Boolean) as string[];
 
   const locationParts = [
     address,
     city,
     state,
     pincode,
-  ].filter(Boolean);
+  ].filter(Boolean) as string[];
 
   return (
     <footer className="border-t border-white/10 bg-black">
@@ -54,7 +123,10 @@ export default async function Footer() {
         <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
           {/* Brand */}
           <div className="lg:col-span-2">
-            <Link href="/" className="group inline-block">
+            <Link
+              href="/"
+              className="group inline-block"
+            >
               <h2 className="text-2xl font-semibold tracking-[-0.04em] text-white transition-colors duration-300 group-hover:text-[#c9a45c]">
                 {restaurantName}
               </h2>
@@ -165,7 +237,11 @@ export default async function Footer() {
                 locationParts.map((part, index) => (
                   <span key={`${part}-${index}`}>
                     {part}
-                    {index < locationParts.length - 1 && <br />}
+
+                    {index <
+                      locationParts.length - 1 && (
+                      <br />
+                    )}
                   </span>
                 ))
               ) : (
@@ -200,9 +276,11 @@ export default async function Footer() {
             <p className="mt-3 text-sm leading-6 text-white/50">
               {diningOptions.length > 0 ? (
                 diningOptions.map((option, index) => (
-                  <span key={String(option)}>
+                  <span key={option}>
                     {option}
-                    {index < diningOptions.length - 1 && " • "}
+
+                    {index <
+                      diningOptions.length - 1 && " • "}
                   </span>
                 ))
               ) : (
@@ -215,8 +293,8 @@ export default async function Footer() {
         {/* Bottom */}
         <div className="mt-8 flex flex-col gap-5 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-white/30">
-            © {new Date().getFullYear()} {restaurantName}. All rights
-            reserved.
+            © {new Date().getFullYear()} {restaurantName}.
+            All rights reserved.
           </p>
 
           <div className="flex items-center gap-5">

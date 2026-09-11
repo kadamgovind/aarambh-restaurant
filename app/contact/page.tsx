@@ -32,14 +32,14 @@ export default function ContactPage() {
           </p>
 
           <h1 className="max-w-5xl text-5xl font-light tracking-tight md:text-7xl">
-            Let's make your
+            Let&apos;s make your
             <br />
             next visit special.
           </h1>
 
           <p className="mt-8 max-w-2xl text-lg leading-8 text-white/50">
-            Whether you're planning a family dinner, celebration or
-            simply want to know more about Aarambh, we'd love to hear
+            Whether you&apos;re planning a family dinner, celebration or
+            simply want to know more about Aarambh, we&apos;d love to hear
             from you.
           </p>
         </div>
@@ -48,7 +48,6 @@ export default function ContactPage() {
       {/* CONTACT INFORMATION */}
       <section className="border-b border-white/10 px-6 py-20 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-5 md:grid-cols-2 lg:grid-cols-4">
-
           {/* LOCATION */}
           <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-7">
             <span className="text-2xl text-[#c9a45c]">⌖</span>
@@ -137,7 +136,6 @@ export default function ContactPage() {
       {/* FORM + LOCATION */}
       <section className="px-6 py-24 lg:px-8">
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-2">
-
           {/* FORM */}
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-[#c9a45c]">
@@ -150,7 +148,7 @@ export default function ContactPage() {
 
             <p className="mt-6 max-w-xl leading-7 text-white/45">
               Have a question, special request or event enquiry?
-              Complete the form and we'll get back to you.
+              Complete the form and we&apos;ll get back to you.
             </p>
 
             {submitted ? (
@@ -262,7 +260,6 @@ export default function ContactPage() {
           {/* LOCATION */}
           <div>
             <div className="relative min-h-[560px] overflow-hidden rounded-3xl border border-white/10 bg-[#111]">
-
               <div className="absolute inset-0 opacity-30">
                 <div className="absolute left-[15%] top-[20%] h-px w-[80%] rotate-12 bg-white/20" />
 
@@ -302,7 +299,7 @@ export default function ContactPage() {
 
                 <p className="mt-4 text-xs leading-5 text-white/35">
                   Official map location will be connected after the
-                  restaurant's exact address is confirmed.
+                  restaurant&apos;s exact address is confirmed.
                 </p>
               </div>
             </div>
@@ -314,7 +311,6 @@ export default function ContactPage() {
       <section className="border-y border-white/10 px-6 py-24 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
-
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
                 Events & Celebrations
@@ -341,7 +337,6 @@ export default function ContactPage() {
                 Call About Events
               </a>
             </div>
-
           </div>
         </div>
       </section>
@@ -349,7 +344,6 @@ export default function ContactPage() {
       {/* FINAL CTA */}
       <section className="px-6 py-28 lg:px-8">
         <div className="mx-auto max-w-4xl text-center">
-
           <p className="text-xs uppercase tracking-[0.4em] text-[#c9a45c]">
             Aarambh Restaurant
           </p>
@@ -370,7 +364,6 @@ export default function ContactPage() {
           >
             Book a Table
           </Link>
-
         </div>
       </section>
 

@@ -551,7 +551,7 @@ export default function LoginPage() {
 
               <p className="mt-8 text-center text-sm text-white/35">
 
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
 
                 <Link
                   href="/register"

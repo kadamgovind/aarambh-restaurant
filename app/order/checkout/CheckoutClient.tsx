@@ -5,14 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import Navbar from "@/components/Navbar";
-
-import {
-  clearCart,
-  getCartItems,
-  type CartItem,
-} from "@/lib/cart";
-
+import { getCartItems, clearCart, type CartItem } from "@/lib/cart";
 import { supabase } from "@/lib/supabase";
+
+const FREE_DELIVERY_THRESHOLD = 1000;
+const DELIVERY_FEE = 49;
+const TAX_RATE = 0.05;
 
 type CheckoutForm = {
   name: string;
@@ -27,21 +25,17 @@ type VerifiedMenuItem = {
   restaurant_id: string;
   name: string;
   price: number;
-  item_type: "veg" | "non_veg";
+  item_type: string | null;
   is_available: boolean;
 };
-
-const FREE_DELIVERY_THRESHOLD = 1000;
-const DELIVERY_FEE = 49;
-const TAX_RATE = 0.05;
 
 export default function CheckoutClient() {
   const router = useRouter();
 
-  const [items, setItems] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [placingOrder, setPlacingOrder] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [error, setError] = useState("");
 
   const [form, setForm] = useState<CheckoutForm>({
     name: "",
@@ -51,26 +45,50 @@ export default function CheckoutClient() {
     deliveryNote: "",
   });
 
+  const subtotal = useMemo(() => {
+    return cart.reduce(
+      (sum, item) => sum + Number(item.price) * Number(item.quantity),
+      0
+    );
+  }, [cart]);
+
+  const deliveryFee =
+    subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE;
+
+  const taxes = subtotal * TAX_RATE;
+
+  const total = subtotal + deliveryFee + taxes;
+
   useEffect(() => {
+    let active = true;
+
     async function loadCheckout() {
       try {
-        const cartItems = getCartItems();
+        setLoading(true);
+        setError("");
 
-        if (cartItems.length === 0) {
-          router.replace("/order/cart");
+        const savedCart = getCartItems();
+
+        if (!savedCart || savedCart.length === 0) {
+          router.replace("/order");
           return;
         }
 
         const {
           data: { user },
+          error: authError,
         } = await supabase.auth.getUser();
 
-        if (!user) {
-          router.replace("/customer/login?redirect=/order/checkout");
-          return;
+        if (authError) {
+          throw authError;
         }
 
-        setItems(cartItems);
+        if (!user) {
+          router.replace(
+            `/login?redirect=${encodeURIComponent("/order/checkout")}`
+          );
+          return;
+        }
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
@@ -82,46 +100,36 @@ export default function CheckoutClient() {
           console.error("Profile loading error:", profileError);
         }
 
-        if (profile) {
-          setForm((current) => ({
-            ...current,
-            name: profile.full_name || "",
-            phone: profile.phone || "",
-          }));
+        if (!active) return;
+
+        setCart(savedCart);
+
+        setForm((current) => ({
+          ...current,
+          name: current.name || profile?.full_name || "",
+          phone: current.phone || profile?.phone || "",
+        }));
+      } catch (err) {
+        console.error("Checkout loading error:", err);
+
+        if (active) {
+          setError("Unable to load checkout. Please try again.");
         }
-      } catch (error) {
-        console.error("Checkout loading error:", error);
-        setErrorMessage("Unable to load checkout.");
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
     loadCheckout();
+
+    return () => {
+      active = false;
+    };
   }, [router]);
 
-  const subtotal = useMemo(() => {
-    return items.reduce(
-      (total, item) => total + item.price * item.quantity,
-      0
-    );
-  }, [items]);
-
-  const deliveryFee = useMemo(() => {
-    if (subtotal === 0) return 0;
-
-    return subtotal >= FREE_DELIVERY_THRESHOLD
-      ? 0
-      : DELIVERY_FEE;
-  }, [subtotal]);
-
-  const taxes = useMemo(() => {
-    return Math.round(subtotal * TAX_RATE);
-  }, [subtotal]);
-
-  const total = subtotal + deliveryFee + taxes;
-
-  function updateField(
+  function updateForm(
     field: keyof CheckoutForm,
     value: string
   ) {
@@ -131,149 +139,172 @@ export default function CheckoutClient() {
     }));
   }
 
-  function formatPrice(amount: number) {
-    return `₹${amount.toLocaleString("en-IN")}`;
-  }
+  async function handlePlaceOrder() {
+    if (placingOrder) return;
 
-  async function handlePlaceOrder(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
+    setError("");
 
-    setErrorMessage("");
-
-    if (items.length === 0) {
-      setErrorMessage("Your cart is empty.");
+    if (cart.length === 0) {
+      setError("Your cart is empty.");
       return;
     }
 
     if (!form.name.trim()) {
-      setErrorMessage("Please enter your name.");
+      setError("Please enter your name.");
       return;
     }
 
     if (!form.phone.trim()) {
-      setErrorMessage("Please enter your phone number.");
-      return;
-    }
-
-    if (!/^[6-9]\d{9}$/.test(form.phone.trim())) {
-      setErrorMessage("Please enter a valid 10-digit mobile number.");
+      setError("Please enter your phone number.");
       return;
     }
 
     if (!form.address.trim()) {
-      setErrorMessage("Please enter your delivery address.");
+      setError("Please enter your delivery address.");
       return;
     }
 
     if (!form.city.trim()) {
-      setErrorMessage("Please enter your city.");
+      setError("Please enter your city.");
       return;
     }
 
-    setPlacingOrder(true);
-
     try {
+      setPlacingOrder(true);
+
       const {
         data: { user },
-        error: userError,
+        error: authError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user) {
-        router.replace("/customer/login?redirect=/order/checkout");
+      if (authError) {
+        throw authError;
+      }
+
+      if (!user) {
+        router.push(
+          `/login?redirect=${encodeURIComponent("/order/checkout")}`
+        );
         return;
       }
 
-      const restaurantIds = [
-        ...new Set(items.map((item) => item.restaurantId)),
-      ];
+      /*
+       * ---------------------------------------------------------
+       * 1. Verify all cart items belong to the same restaurant
+       * ---------------------------------------------------------
+       */
+
+      const menuItemIds = Array.from(
+        new Set(cart.map((item) => item.id))
+      );
+
+      if (menuItemIds.length === 0) {
+        throw new Error("Your cart is empty.");
+      }
+
+      const { data: menuItems, error: menuError } = await supabase
+        .from("menu_items")
+        .select(
+          "id, restaurant_id, name, price, item_type, is_available"
+        )
+        .in("id", menuItemIds);
+
+      if (menuError) {
+        throw menuError;
+      }
+
+      if (!menuItems || menuItems.length !== menuItemIds.length) {
+        throw new Error(
+          "Some items in your cart are no longer available."
+        );
+      }
+
+      const verifiedItems =
+        menuItems as VerifiedMenuItem[];
+
+      const restaurantIds = Array.from(
+        new Set(
+          verifiedItems.map(
+            (item) => item.restaurant_id
+          )
+        )
+      );
 
       if (restaurantIds.length !== 1) {
         throw new Error(
-          "Your cart contains items from multiple restaurants."
+          "Items from different restaurants cannot be ordered together."
         );
       }
 
       const restaurantId = restaurantIds[0];
 
-      const menuItemIds = items.map((item) => item.id);
+      /*
+       * ---------------------------------------------------------
+       * 2. Verify availability
+       * ---------------------------------------------------------
+       */
 
-      const { data: menuItems, error: menuError } =
-        await supabase
-          .from("menu_items")
-          .select(
-            "id, restaurant_id, name, price, item_type, is_available"
-          )
-          .in("id", menuItemIds)
-          .eq("restaurant_id", restaurantId);
-
-      if (menuError) {
-        throw new Error(
-          `Unable to verify menu items: ${menuError.message}`
-        );
-      }
-
-      const verifiedItems =
-        (menuItems || []) as VerifiedMenuItem[];
-
-      if (verifiedItems.length !== items.length) {
-        throw new Error(
-          "One or more items in your cart are no longer available."
-        );
-      }
-
-      const verifiedMap = new Map(
-        verifiedItems.map((item) => [item.id, item])
+      const unavailableItem = verifiedItems.find(
+        (item) => !item.is_available
       );
 
-      for (const cartItem of items) {
-        const verifiedItem = verifiedMap.get(cartItem.id);
-
-        if (!verifiedItem) {
-          throw new Error(
-            `${cartItem.name} is no longer available.`
-          );
-        }
-
-        if (!verifiedItem.is_available) {
-          throw new Error(
-            `${verifiedItem.name} is currently unavailable.`
-          );
-        }
+      if (unavailableItem) {
+        throw new Error(
+          `${unavailableItem.name} is currently unavailable.`
+        );
       }
 
-      const verifiedSubtotal = items.reduce((sum, cartItem) => {
-        const verifiedItem = verifiedMap.get(cartItem.id);
+      /*
+       * ---------------------------------------------------------
+       * 3. Calculate prices using database values
+       * ---------------------------------------------------------
+       */
 
-        if (!verifiedItem) {
-          return sum;
-        }
+      const verifiedSubtotal = cart.reduce(
+        (sum, cartItem) => {
+          const menuItem = verifiedItems.find(
+            (item) => item.id === cartItem.id
+          );
 
-        return (
-          sum +
-          Number(verifiedItem.price) * cartItem.quantity
-        );
-      }, 0);
+          if (!menuItem) {
+            return sum;
+          }
+
+          return (
+            sum +
+            Number(menuItem.price) *
+              Number(cartItem.quantity)
+          );
+        },
+        0
+      );
 
       const verifiedDeliveryFee =
         verifiedSubtotal >= FREE_DELIVERY_THRESHOLD
           ? 0
           : DELIVERY_FEE;
 
-      const verifiedTaxes = Math.round(
-        verifiedSubtotal * TAX_RATE
-      );
+      const verifiedTaxes =
+        verifiedSubtotal * TAX_RATE;
 
       const verifiedTotal =
         verifiedSubtotal +
         verifiedDeliveryFee +
         verifiedTaxes;
 
-      const orderNumber =
-        Number(
-          `${Date.now()}${Math.floor(Math.random() * 10)}`
-        );
+      /*
+       * ---------------------------------------------------------
+       * 4. Create order
+       *
+       * IMPORTANT:
+       * order_number is NOT inserted manually.
+       *
+       * Database schema:
+       * order_number bigint GENERATED ALWAYS AS IDENTITY
+       *
+       * Supabase/PostgreSQL will generate it automatically.
+       * ---------------------------------------------------------
+       */
 
       const { data: order, error: orderError } =
         await supabase
@@ -281,7 +312,6 @@ export default function CheckoutClient() {
           .insert({
             restaurant_id: restaurantId,
             customer_id: user.id,
-            order_number: orderNumber,
             status: "pending",
             order_type: "delivery",
             subtotal: verifiedSubtotal,
@@ -297,24 +327,57 @@ export default function CheckoutClient() {
           .select("id, order_number")
           .single();
 
-      if (orderError || !order) {
+      if (orderError) {
+  console.error("ORDER INSERT FAILED");
+  console.error("message:", orderError.message);
+  console.error("details:", orderError.details);
+  console.error("hint:", orderError.hint);
+  console.error("code:", orderError.code);
+  console.error("full error:", JSON.stringify(orderError, null, 2));
+
+  throw new Error(
+    orderError.message ||
+      orderError.details ||
+      "Unable to create order."
+  );
+}
+
+
+
+      if (!order) {
         throw new Error(
-          orderError?.message ||
-            "Unable to create your order."
+          "Order was not created successfully."
         );
       }
 
-      const orderItems = items.map((cartItem) => {
-        const verifiedItem = verifiedMap.get(cartItem.id)!;
-        const itemPrice = Number(verifiedItem.price);
+      /*
+       * ---------------------------------------------------------
+       * 5. Create order items
+       * ---------------------------------------------------------
+       */
+
+      const orderItems = cart.map((cartItem) => {
+        const menuItem = verifiedItems.find(
+          (item) => item.id === cartItem.id
+        );
+
+        if (!menuItem) {
+          throw new Error(
+            `Menu item ${cartItem.id} was not found.`
+          );
+        }
+
+        const quantity = Number(cartItem.quantity);
+        const itemPrice = Number(menuItem.price);
+        const itemTotal = itemPrice * quantity;
 
         return {
           order_id: order.id,
-          menu_item_id: verifiedItem.id,
-          item_name: verifiedItem.name,
+          menu_item_id: menuItem.id,
+          item_name: menuItem.name,
           item_price: itemPrice,
-          quantity: cartItem.quantity,
-          item_total: itemPrice * cartItem.quantity,
+          quantity,
+          item_total: itemTotal,
         };
       });
 
@@ -324,46 +387,89 @@ export default function CheckoutClient() {
           .insert(orderItems);
 
       if (orderItemsError) {
-        await supabase
-          .from("orders")
-          .delete()
-          .eq("id", order.id);
-
-        throw new Error(
-          `Unable to save order items: ${orderItemsError.message}`
+        console.error(
+          "Order items creation error:",
+          orderItemsError
         );
+
+        /*
+         * The order itself already exists.
+         * We stop here rather than pretending the order
+         * was completed successfully.
+         */
+        throw orderItemsError;
       }
 
-      const { error: paymentError } = await supabase
-        .from("payments")
-        .insert({
-          order_id: order.id,
-          amount: verifiedTotal,
-          payment_method: "cod",
-          payment_status: "pending",
-        });
+      /*
+       * ---------------------------------------------------------
+       * 6. Create payment record
+       * ---------------------------------------------------------
+       *
+       * Current checkout uses Cash on Delivery.
+       * Payment is initially pending.
+       * ---------------------------------------------------------
+       */
 
+      const { error: paymentError } =
+        await supabase
+          .from("payments")
+          .insert({
+            order_id: order.id,
+            amount: verifiedTotal,
+            payment_method: "cod",
+            payment_status: "pending",
+          });
+
+      /*
+       * Payment record failure should not hide the successful
+       * order if the restaurant can still process the order.
+       */
       if (paymentError) {
         console.error(
-          "Payment record creation failed:",
+          "Payment record creation error:",
           paymentError
         );
       }
 
+      /*
+       * ---------------------------------------------------------
+       * 7. Clear cart
+       * ---------------------------------------------------------
+       */
+
       clearCart();
 
+      /*
+       * ---------------------------------------------------------
+       * 8. Redirect to success page
+       *
+       * order.order_number is the automatically generated
+       * identity value returned by PostgreSQL.
+       * ---------------------------------------------------------
+       */
+
       router.push(
-        `/order/success?order=${order.order_number}`
+        `/order/success?order=${encodeURIComponent(
+          String(order.order_number)
+        )}`
       );
-    } catch (error) {
-      console.error("Place order error:", error);
-
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong while placing your order."
+    } catch (err) {
+      console.error(
+        "Place order error:",
+        err
       );
 
+      if (err instanceof Error) {
+        setError(
+          err.message ||
+            "Unable to place your order. Please try again."
+        );
+      } else {
+        setError(
+          "Unable to place your order. Please try again."
+        );
+      }
+    } finally {
       setPlacingOrder(false);
     }
   }
@@ -373,42 +479,43 @@ export default function CheckoutClient() {
       <>
         <Navbar />
 
-        <section className="flex min-h-[75vh] items-center justify-center px-6 pt-24">
+        <main className="min-h-screen bg-black text-white flex items-center justify-center px-6">
           <div className="text-center">
-            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-[#c9a45c]" />
+            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-[#c9a45c]" />
 
-            <p className="mt-5 text-sm text-white/40">
-              Preparing secure checkout...
+            <p className="text-sm text-white/60">
+              Loading checkout...
             </p>
           </div>
-        </section>
+        </main>
       </>
     );
   }
 
-  if (items.length === 0) {
+  if (cart.length === 0) {
     return (
       <>
         <Navbar />
 
-        <section className="flex min-h-[75vh] items-center justify-center px-6 pt-24">
-          <div className="text-center">
-            <p className="text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
-              Checkout
-            </p>
-
-            <h1 className="mt-4 text-4xl font-light md:text-6xl">
-              Your cart is empty.
+        <main className="min-h-screen bg-black text-white flex items-center justify-center px-6">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
+            <h1 className="text-2xl font-semibold">
+              Your cart is empty
             </h1>
+
+            <p className="mt-3 text-sm text-white/60">
+              Add some delicious items before
+              checking out.
+            </p>
 
             <Link
               href="/order"
-              className="mt-8 inline-flex rounded-full bg-[#c9a45c] px-8 py-4 text-sm font-medium text-black transition hover:bg-[#d8b873]"
+              className="mt-6 inline-flex rounded-xl bg-[#c9a45c] px-6 py-3 text-sm font-semibold text-black transition hover:opacity-90"
             >
-              Explore Menu
+              Browse Menu
             </Link>
           </div>
-        </section>
+        </main>
       </>
     );
   }
@@ -417,253 +524,275 @@ export default function CheckoutClient() {
     <>
       <Navbar />
 
-      <section className="border-b border-white/10 px-6 pb-12 pt-32 lg:px-8">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-xs uppercase tracking-[0.4em] text-[#c9a45c]">
-            Aarambh Restaurant
-          </p>
+      <main className="min-h-screen bg-black px-4 pb-20 pt-10 text-white sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-10">
+            <p className="text-xs uppercase tracking-[0.3em] text-[#c9a45c]">
+              AURA
+            </p>
 
-          <h1 className="mt-5 text-5xl font-light tracking-tight md:text-7xl">
-            Checkout.
-          </h1>
+            <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">
+              Checkout
+            </h1>
 
-          <p className="mt-5 max-w-2xl text-base leading-7 text-white/45">
-            Enter your delivery details and place your
-            order securely.
-          </p>
-        </div>
-      </section>
+            <p className="mt-2 text-sm text-white/50">
+              Complete your details to place your order.
+            </p>
+          </div>
 
-      <section className="px-6 py-12 lg:px-8 lg:py-20">
-        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[1fr_380px]">
-          <form
-            onSubmit={handlePlaceOrder}
-            className="space-y-6"
-          >
-            <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-6 sm:p-8">
-              <p className="text-xs uppercase tracking-[0.3em] text-white/35">
+          {error && (
+            <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          )}
+
+          <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
+            {/* Checkout Form */}
+            <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-7">
+              <h2 className="text-xl font-semibold">
                 Delivery Details
-              </p>
-
-              <h2 className="mt-3 text-2xl font-light">
-                Where should we deliver?
               </h2>
 
-              <div className="mt-8 grid gap-5 md:grid-cols-2">
+              <div className="mt-6 space-y-5">
                 <div>
-                  <label className="text-sm text-white/55">
+                  <label
+                    htmlFor="name"
+                    className="mb-2 block text-sm text-white/70"
+                  >
                     Full Name
                   </label>
 
                   <input
+                    id="name"
+                    type="text"
                     value={form.name}
-                    onChange={(event) =>
-                      updateField("name", event.target.value)
+                    onChange={(e) =>
+                      updateForm(
+                        "name",
+                        e.target.value
+                      )
                     }
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-sm outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
-                    placeholder="Your full name"
+                    placeholder="Enter your full name"
+                    className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm text-white/55">
-                    Mobile Number
+                  <label
+                    htmlFor="phone"
+                    className="mb-2 block text-sm text-white/70"
+                  >
+                    Phone Number
                   </label>
 
                   <input
+                    id="phone"
+                    type="tel"
                     value={form.phone}
-                    onChange={(event) =>
-                      updateField(
+                    onChange={(e) =>
+                      updateForm(
                         "phone",
-                        event.target.value.replace(/\D/g, "").slice(0, 10)
+                        e.target.value
                       )
                     }
-                    inputMode="numeric"
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-sm outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
-                    placeholder="10-digit mobile number"
+                    placeholder="Enter your phone number"
+                    className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="text-sm text-white/55">
+                <div>
+                  <label
+                    htmlFor="address"
+                    className="mb-2 block text-sm text-white/70"
+                  >
                     Delivery Address
                   </label>
 
                   <textarea
+                    id="address"
                     value={form.address}
-                    onChange={(event) =>
-                      updateField(
+                    onChange={(e) =>
+                      updateForm(
                         "address",
-                        event.target.value
+                        e.target.value
                       )
                     }
+                    placeholder="House/flat number, street, area"
                     rows={4}
-                    className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-sm outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
-                    placeholder="House / Flat, Street, Area"
+                    className="w-full resize-none rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm text-white/55">
+                  <label
+                    htmlFor="city"
+                    className="mb-2 block text-sm text-white/70"
+                  >
                     City
                   </label>
 
                   <input
+                    id="city"
+                    type="text"
                     value={form.city}
-                    onChange={(event) =>
-                      updateField("city", event.target.value)
+                    onChange={(e) =>
+                      updateForm(
+                        "city",
+                        e.target.value
+                      )
                     }
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-sm outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
-                    placeholder="City"
+                    placeholder="Enter your city"
+                    className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm text-white/55">
-                    Payment
-                  </label>
-
-                  <div className="mt-2 flex min-h-[52px] items-center rounded-2xl border border-[#c9a45c]/30 bg-[#c9a45c]/5 px-4">
-                    <span className="text-sm">
-                      Cash on Delivery
-                    </span>
-                  </div>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="text-sm text-white/55">
-                    Delivery Instructions{" "}
-                    <span className="text-white/25">
-                      (optional)
+                  <label
+                    htmlFor="deliveryNote"
+                    className="mb-2 block text-sm text-white/70"
+                  >
+                    Delivery Note{" "}
+                    <span className="text-white/30">
+                      (Optional)
                     </span>
                   </label>
 
                   <textarea
+                    id="deliveryNote"
                     value={form.deliveryNote}
-                    onChange={(event) =>
-                      updateField(
+                    onChange={(e) =>
+                      updateForm(
                         "deliveryNote",
-                        event.target.value
+                        e.target.value
                       )
                     }
+                    placeholder="Any special instructions?"
                     rows={3}
-                    className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-sm outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50"
-                    placeholder="Any special delivery instructions?"
+                    className="w-full resize-none rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
               </div>
-            </div>
+            </section>
 
-            {errorMessage && (
-              <div className="rounded-2xl border border-red-500/20 bg-red-500/5 px-5 py-4 text-sm text-red-300">
-                {errorMessage}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={placingOrder}
-              className="w-full rounded-full bg-[#c9a45c] py-4 text-sm font-medium text-black transition hover:bg-[#d8b873] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {placingOrder
-                ? "Placing Order..."
-                : "Place Order"}
-            </button>
-
-            <p className="text-center text-xs leading-5 text-white/25">
-              By placing this order, you confirm that
-              your delivery details are correct.
-            </p>
-          </form>
-
-          <aside>
-            <div className="sticky top-28 rounded-3xl border border-white/10 bg-white/[0.025] p-6 sm:p-7">
-              <p className="text-xs uppercase tracking-[0.3em] text-white/35">
+            {/* Order Summary */}
+            <aside className="h-fit rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-7">
+              <h2 className="text-xl font-semibold">
                 Order Summary
-              </p>
-
-              <h2 className="mt-3 text-2xl font-light">
-                Your order.
               </h2>
 
-              <div className="mt-7 space-y-4 border-b border-white/10 pb-6">
-                {items.map((item) => (
+              <div className="mt-6 space-y-4">
+                {cart.map((item) => (
                   <div
                     key={item.id}
-                    className="flex justify-between gap-4 text-sm"
+                    className="flex items-start justify-between gap-4"
                   >
-                    <div>
-                      <p className="text-white/75">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
                         {item.name}
                       </p>
 
-                      <p className="mt-1 text-xs text-white/30">
-                        {formatPrice(item.price)} ×{" "}
-                        {item.quantity}
+                      <p className="mt-1 text-xs text-white/40">
+                        {item.quantity} × ₹
+                        {Number(item.price).toFixed(
+                          2
+                        )}
                       </p>
                     </div>
 
-                    <span className="shrink-0 text-white/70">
-                      {formatPrice(
-                        item.price * item.quantity
-                      )}
-                    </span>
+                    <p className="shrink-0 text-sm">
+                      ₹
+                      {(
+                        Number(item.price) *
+                        Number(item.quantity)
+                      ).toFixed(2)}
+                    </p>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-6 space-y-4 text-sm">
+              <div className="my-6 h-px bg-white/10" />
+
+              <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-white/45">
+                  <span className="text-white/50">
                     Subtotal
                   </span>
 
                   <span>
-                    {formatPrice(subtotal)}
+                    ₹{subtotal.toFixed(2)}
                   </span>
                 </div>
 
                 <div className="flex justify-between">
-                  <span className="text-white/45">
+                  <span className="text-white/50">
                     Delivery
                   </span>
 
                   <span>
                     {deliveryFee === 0
                       ? "FREE"
-                      : formatPrice(deliveryFee)}
+                      : `₹${deliveryFee.toFixed(2)}`}
                   </span>
                 </div>
 
                 <div className="flex justify-between">
-                  <span className="text-white/45">
-                    Taxes
+                  <span className="text-white/50">
+                    Tax
                   </span>
 
-                  <span>{formatPrice(taxes)}</span>
+                  <span>
+                    ₹{taxes.toFixed(2)}
+                  </span>
                 </div>
               </div>
 
-              <div className="mt-6 flex items-end justify-between border-t border-white/10 pt-6">
-                <span className="text-white/50">
+              <div className="my-6 h-px bg-white/10" />
+
+              <div className="flex items-center justify-between">
+                <span className="text-base font-semibold">
                   Total
                 </span>
 
-                <span className="text-2xl text-[#c9a45c]">
-                  {formatPrice(total)}
+                <span className="text-xl font-semibold text-[#c9a45c]">
+                  ₹{total.toFixed(2)}
                 </span>
               </div>
 
+              <div className="mt-6 rounded-xl border border-white/10 bg-black/40 p-4">
+                <p className="text-xs uppercase tracking-wider text-white/40">
+                  Payment Method
+                </p>
+
+                <p className="mt-2 text-sm font-medium">
+                  Cash on Delivery
+                </p>
+
+                <p className="mt-1 text-xs text-white/40">
+                  Pay when your order is delivered.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePlaceOrder}
+                disabled={placingOrder}
+                className="mt-6 w-full rounded-xl bg-[#c9a45c] px-5 py-3.5 text-sm font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {placingOrder
+                  ? "Placing Order..."
+                  : "Place Order"}
+              </button>
+
               <Link
                 href="/order/cart"
-                className="mt-6 block text-center text-sm text-white/35 transition hover:text-[#c9a45c]"
+                className="mt-3 block text-center text-sm text-white/50 transition hover:text-white"
               >
                 ← Back to Cart
               </Link>
-            </div>
-          </aside>
+            </aside>
+          </div>
         </div>
-      </section>
+      </main>
     </>
   );
 }

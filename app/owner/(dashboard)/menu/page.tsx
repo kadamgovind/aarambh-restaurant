@@ -126,165 +126,183 @@ export default function MenuPage() {
   const [actionId, setActionId] = useState<string | null>(null);
 
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   /* =======================================================
      LOAD MENU
   ======================================================= */
 
-  async function loadMenu() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError) {
-        throw new Error(authError.message);
-      }
-
-      if (!user) {
-        throw new Error("Please login first.");
-      }
-
-      /* ---------------------------------------------------
-         Find owner's restaurant
-      --------------------------------------------------- */
-
-      const { data: restaurant, error: restaurantError } =
-        await supabase
-          .from("restaurants")
-          .select("id")
-          .eq("owner_id", user.id)
-          .maybeSingle();
-
-      if (restaurantError) {
-        throw new Error(restaurantError.message);
-      }
-
-      if (!restaurant) {
-        throw new Error("No restaurant found for this account.");
-      }
-
-      /* ---------------------------------------------------
-         Load categories
-      --------------------------------------------------- */
-
-      const { data: categoryData, error: categoryError } =
-        await supabase
-          .from("menu_categories")
-          .select(
-            "id, name, description, display_order, is_active"
-          )
-          .eq("restaurant_id", restaurant.id)
-          .order("display_order", {
-            ascending: true,
-          })
-          .order("name", {
-            ascending: true,
-          });
-
-      if (categoryError) {
-        throw new Error(categoryError.message);
-      }
-
-      const loadedCategories = (categoryData || []) as Category[];
-
-      setCategories(loadedCategories);
-
-      /* ---------------------------------------------------
-         Load all owner menu items
-
-         IMPORTANT:
-         Owner needs unavailable items too.
-         Therefore we intentionally do NOT use
-         is_available = true here.
-      --------------------------------------------------- */
-
-      const { data: itemData, error: itemError } =
-        await supabase
-          .from("menu_items")
-          .select(
-            `
-            id,
-            restaurant_id,
-            category_id,
-            name,
-            slug,
-            description,
-            price,
-            item_type,
-            image_url,
-            is_available,
-            is_featured,
-            display_order,
-            menu_categories (
-              id,
-              name
-            )
-          `
-          )
-          .eq("restaurant_id", restaurant.id)
-          .order("display_order", {
-            ascending: true,
-          })
-          .order("created_at", {
-            ascending: false,
-          });
-
-      if (itemError) {
-        throw new Error(itemError.message);
-      }
-
-      const rows = (itemData || []) as MenuItemRow[];
-
-      const mappedItems: MenuItem[] = rows.map((item) => ({
-        id: item.id,
-        restaurantId: item.restaurant_id,
-        name: item.name,
-        description: item.description || "",
-        price: Number(item.price || 0),
-        categoryId: item.category_id || "",
-        category: getCategoryName(item.menu_categories),
-        type: item.item_type === "veg" ? "Veg" : "Non-Veg",
-        available: item.is_available,
-        popular: item.is_featured,
-        image: item.image_url || "",
-        slug: item.slug,
-        displayOrder: item.display_order,
-      }));
-
-      setMenu(mappedItems);
-
-      /* ---------------------------------------------------
-         Default category
-      --------------------------------------------------- */
-
-      if (loadedCategories.length > 0) {
-        setForm((previous) => ({
-          ...previous,
-          categoryId:
-            previous.categoryId || loadedCategories[0].id,
-        }));
-      }
-    } catch (err) {
-      console.error("Menu loading error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load menu."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadMenu();
-  }, []);
+    let cancelled = false;
+
+    async function loadMenu() {
+      try {
+        if (!cancelled) {
+          setLoading(true);
+          setError("");
+        }
+
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError) {
+          throw new Error(authError.message);
+        }
+
+        if (!user) {
+          throw new Error("Please login first.");
+        }
+
+        /* ---------------------------------------------------
+           Find owner's restaurant
+        --------------------------------------------------- */
+
+        const { data: restaurant, error: restaurantError } =
+          await supabase
+            .from("restaurants")
+            .select("id")
+            .eq("owner_id", user.id)
+            .maybeSingle();
+
+        if (restaurantError) {
+          throw new Error(restaurantError.message);
+        }
+
+        if (!restaurant) {
+          throw new Error("No restaurant found for this account.");
+        }
+
+        /* ---------------------------------------------------
+           Load categories
+        --------------------------------------------------- */
+
+        const { data: categoryData, error: categoryError } =
+          await supabase
+            .from("menu_categories")
+            .select(
+              "id, name, description, display_order, is_active"
+            )
+            .eq("restaurant_id", restaurant.id)
+            .order("display_order", {
+              ascending: true,
+            })
+            .order("name", {
+              ascending: true,
+            });
+
+        if (categoryError) {
+          throw new Error(categoryError.message);
+        }
+
+        const loadedCategories =
+          (categoryData || []) as Category[];
+
+        if (cancelled) return;
+
+        setCategories(loadedCategories);
+
+        /* ---------------------------------------------------
+           Load all owner menu items
+
+           IMPORTANT:
+           Owner needs unavailable items too.
+           Therefore we intentionally do NOT use
+           is_available = true here.
+        --------------------------------------------------- */
+
+        const { data: itemData, error: itemError } =
+          await supabase
+            .from("menu_items")
+            .select(
+              `
+              id,
+              restaurant_id,
+              category_id,
+              name,
+              slug,
+              description,
+              price,
+              item_type,
+              image_url,
+              is_available,
+              is_featured,
+              display_order,
+              menu_categories (
+                id,
+                name
+              )
+            `
+            )
+            .eq("restaurant_id", restaurant.id)
+            .order("display_order", {
+              ascending: true,
+            })
+            .order("created_at", {
+              ascending: false,
+            });
+
+        if (itemError) {
+          throw new Error(itemError.message);
+        }
+
+        const rows = (itemData || []) as MenuItemRow[];
+
+        const mappedItems: MenuItem[] = rows.map((item) => ({
+          id: item.id,
+          restaurantId: item.restaurant_id,
+          name: item.name,
+          description: item.description || "",
+          price: Number(item.price || 0),
+          categoryId: item.category_id || "",
+          category: getCategoryName(item.menu_categories),
+          type: item.item_type === "veg" ? "Veg" : "Non-Veg",
+          available: item.is_available,
+          popular: item.is_featured,
+          image: item.image_url || "",
+          slug: item.slug,
+          displayOrder: item.display_order,
+        }));
+
+        if (cancelled) return;
+
+        setMenu(mappedItems);
+
+        /* ---------------------------------------------------
+           Default category
+        --------------------------------------------------- */
+
+        if (loadedCategories.length > 0) {
+          setForm((previous) => ({
+            ...previous,
+            categoryId:
+              previous.categoryId || loadedCategories[0].id,
+          }));
+        }
+      } catch (err) {
+        if (cancelled) return;
+
+        console.error("Menu loading error:", err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load menu."
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadMenu();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   /* =======================================================
      FILTER
@@ -544,11 +562,6 @@ export default function MenuPage() {
       if (editingItem) {
         let slug = editingItem.slug;
 
-        /*
-          Only create a new slug when the dish name changes.
-          This prevents unnecessary slug changes during normal edits.
-        */
-
         if (
           form.name.trim().toLowerCase() !==
           editingItem.name.trim().toLowerCase()
@@ -631,7 +644,7 @@ export default function MenuPage() {
       }
 
       closeModal();
-      await loadMenu();
+      setRefreshKey((current) => current + 1);
     } catch (err) {
       console.error("Menu save error:", err);
 
@@ -933,7 +946,9 @@ export default function MenuPage() {
             <span>{error}</span>
 
             <button
-              onClick={loadMenu}
+              onClick={() =>
+                setRefreshKey((current) => current + 1)
+              }
               className="rounded-lg border border-red-400/20 px-3 py-2 text-xs font-medium hover:bg-red-400/10"
             >
               Retry

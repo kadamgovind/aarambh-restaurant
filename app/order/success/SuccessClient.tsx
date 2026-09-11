@@ -36,6 +36,37 @@ type OrderData = {
   } | null;
 };
 
+type RawPayment = {
+  payment_method: string;
+  payment_status: string;
+};
+
+type RawOrderItem = {
+  id: string;
+  item_name: string;
+  item_price: number | string;
+  quantity: number | string;
+  item_total: number | string;
+};
+
+type RawOrder = {
+  id: string;
+  order_number: number | string;
+  status: string;
+  order_type: string;
+  subtotal: number | string;
+  delivery_fee: number | string;
+  discount_amount: number | string;
+  total_amount: number | string;
+  customer_name: string;
+  customer_phone: string;
+  delivery_address: string | null;
+  special_instructions: string | null;
+  created_at: string;
+  order_items: RawOrderItem[] | null;
+  payments: RawPayment[] | RawPayment | null;
+};
+
 export default function SuccessClient() {
   const searchParams = useSearchParams();
   const orderNumber = searchParams.get("order");
@@ -119,7 +150,7 @@ export default function SuccessClient() {
           return;
         }
 
-        const rawOrder = orderData as any;
+        const rawOrder = orderData as unknown as RawOrder;
 
         const paymentData = Array.isArray(rawOrder.payments)
           ? rawOrder.payments[0] || null
@@ -140,7 +171,7 @@ export default function SuccessClient() {
           special_instructions: rawOrder.special_instructions,
           created_at: rawOrder.created_at,
           order_items: (rawOrder.order_items || []).map(
-            (item: any) => ({
+            (item: RawOrderItem) => ({
               id: item.id,
               item_name: item.item_name,
               item_price: Number(item.item_price),
@@ -166,7 +197,7 @@ export default function SuccessClient() {
       }
     }
 
-    loadOrder();
+    void loadOrder();
   }, [orderNumber]);
 
   function formatPrice(amount: number) {

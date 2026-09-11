@@ -131,107 +131,130 @@ export default function ReservationsPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
-
-  async function loadReservations() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError) {
-        throw authError;
-      }
-
-      if (!user) {
-        throw new Error("Owner is not logged in.");
-      }
-
-      // Find restaurant owned by logged-in user
-      const { data: restaurant, error: restaurantError } =
-        await supabase
-          .from("restaurants")
-          .select("id")
-          .eq("owner_id", user.id)
-          .maybeSingle();
-
-      if (restaurantError) {
-        throw restaurantError;
-      }
-
-      if (!restaurant) {
-        throw new Error(
-          "No restaurant found for this owner."
-        );
-      }
-
-      // Load reservations for this restaurant
-      const { data, error: reservationsError } =
-        await supabase
-          .from("reservations")
-          .select(
-            `
-              id,
-              restaurant_id,
-              customer_id,
-              reservation_date,
-              reservation_time,
-              guests,
-              customer_name,
-              customer_phone,
-              special_request,
-              status,
-              created_at
-            `
-          )
-          .eq("restaurant_id", restaurant.id)
-          .order("reservation_date", {
-            ascending: true,
-          })
-          .order("reservation_time", {
-            ascending: true,
-          });
-
-      if (reservationsError) {
-        throw reservationsError;
-      }
-
-      const formattedReservations: Reservation[] =
-        (data || []).map((reservation) => ({
-          id: reservation.id,
-          customer: reservation.customer_name,
-          phone: reservation.customer_phone,
-          date: formatDate(reservation.reservation_date),
-          rawDate: reservation.reservation_date,
-          time: formatTime(reservation.reservation_time),
-          guests: reservation.guests,
-          status: mapStatus(reservation.status),
-          createdAt: formatCreatedAt(reservation.created_at),
-          notes: reservation.special_request || undefined,
-        }));
-
-      setReservations(formattedReservations);
-    } catch (err: any) {
-      console.error(
-        "Reservations loading error:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Failed to load reservations."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    loadReservations();
-  }, []);
+    let cancelled = false;
+
+    async function loadReservations() {
+      try {
+        if (!cancelled) {
+          setLoading(true);
+          setError("");
+        }
+
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError) {
+          throw authError;
+        }
+
+        if (!user) {
+          throw new Error("Owner is not logged in.");
+        }
+
+        // Find restaurant owned by logged-in user
+        const { data: restaurant, error: restaurantError } =
+          await supabase
+            .from("restaurants")
+            .select("id")
+            .eq("owner_id", user.id)
+            .maybeSingle();
+
+        if (restaurantError) {
+          throw restaurantError;
+        }
+
+        if (!restaurant) {
+          throw new Error(
+            "No restaurant found for this owner."
+          );
+        }
+
+        // Load reservations for this restaurant
+        const { data, error: reservationsError } =
+          await supabase
+            .from("reservations")
+            .select(
+              `
+                id,
+                restaurant_id,
+                customer_id,
+                reservation_date,
+                reservation_time,
+                guests,
+                customer_name,
+                customer_phone,
+                special_request,
+                status,
+                created_at
+              `
+            )
+            .eq("restaurant_id", restaurant.id)
+            .order("reservation_date", {
+              ascending: true,
+            })
+            .order("reservation_time", {
+              ascending: true,
+            });
+
+        if (reservationsError) {
+          throw reservationsError;
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const formattedReservations: Reservation[] =
+          (data || []).map((reservation) => ({
+            id: reservation.id,
+            customer: reservation.customer_name,
+            phone: reservation.customer_phone,
+            date: formatDate(reservation.reservation_date),
+            rawDate: reservation.reservation_date,
+            time: formatTime(reservation.reservation_time),
+            guests: reservation.guests,
+            status: mapStatus(reservation.status),
+            createdAt: formatCreatedAt(reservation.created_at),
+            notes:
+              reservation.special_request ||
+              undefined,
+          }));
+
+        setReservations(formattedReservations);
+      } catch (err: unknown) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "Reservations loading error:",
+          err
+        );
+
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Failed to load reservations.";
+
+        setError(message);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadReservations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   async function updateStatus(
     id: string,
@@ -271,16 +294,18 @@ export default function ReservationsPage() {
             }
           : current
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(
         "Reservation status update error:",
         err
       );
 
-      setError(
-        err?.message ||
-          "Failed to update reservation status."
-      );
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to update reservation status.";
+
+      setError(message);
     } finally {
       setUpdating(false);
     }
@@ -378,7 +403,11 @@ export default function ReservationsPage() {
             <span>{error}</span>
 
             <button
-              onClick={loadReservations}
+              onClick={() =>
+                setRefreshKey(
+                  (current) => current + 1
+                )
+              }
               className="rounded-lg border border-red-500/20 px-4 py-2 text-xs text-red-300 transition hover:bg-red-500/10"
             >
               Retry

@@ -101,10 +101,10 @@ function getStatusClasses(status: ReservationStatus) {
 }
 
 export default function AccountBookingsPage() {
-
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -126,6 +126,7 @@ export default function AccountBookingsPage() {
         if (!user) {
           if (mounted) {
             setReservations([]);
+            setNow(Date.now());
             setError("Please sign in to view your bookings.");
           }
           return;
@@ -164,6 +165,7 @@ export default function AccountBookingsPage() {
         }
 
         if (mounted) {
+          setNow(Date.now());
           setReservations((data ?? []) as unknown as Reservation[]);
         }
       } catch (err) {
@@ -173,6 +175,7 @@ export default function AccountBookingsPage() {
           setError(
             "We couldn't load your bookings right now. Please try again."
           );
+          setNow(Date.now());
         }
       } finally {
         if (mounted) {
@@ -181,16 +184,18 @@ export default function AccountBookingsPage() {
       }
     }
 
-    loadBookings();
+    void loadBookings();
 
     return () => {
       mounted = false;
     };
-  }, [supabase]);
-
-  const now = Date.now();
+  }, []);
 
   const upcomingBookings = useMemo(() => {
+    if (now === null) {
+      return [];
+    }
+
     return reservations
       .filter(
         (reservation) =>
@@ -204,6 +209,10 @@ export default function AccountBookingsPage() {
   }, [reservations, now]);
 
   const pastBookings = useMemo(() => {
+    if (now === null) {
+      return [];
+    }
+
     return reservations
       .filter(
         (reservation) =>
@@ -223,6 +232,7 @@ export default function AccountBookingsPage() {
         <div className="mx-auto flex min-h-[60vh] max-w-5xl items-center justify-center">
           <div className="flex flex-col items-center gap-4 text-center">
             <Loader2 className="h-8 w-8 animate-spin text-[#c9a45c]" />
+
             <p className="text-sm text-white/60">
               Loading your bookings...
             </p>
@@ -323,7 +333,7 @@ export default function AccountBookingsPage() {
             </h2>
 
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-white/55">
-              You haven't made any table reservations yet. Reserve a table
+              You haven&apos;t made any table reservations yet. Reserve a table
               and your booking will appear here.
             </p>
 
@@ -342,6 +352,7 @@ export default function AccountBookingsPage() {
                   <h2 className="text-xl font-semibold">
                     Upcoming Bookings
                   </h2>
+
                   <p className="mt-1 text-sm text-white/50">
                     Your upcoming table reservations.
                   </p>
@@ -364,6 +375,7 @@ export default function AccountBookingsPage() {
                   <h2 className="text-xl font-semibold">
                     Booking History
                   </h2>
+
                   <p className="mt-1 text-sm text-white/50">
                     Your completed and previous reservations.
                   </p>
@@ -432,6 +444,7 @@ function ReservationCard({
               {addressParts.length > 0 && (
                 <div className="mt-1 flex items-start gap-1.5 text-xs text-white/45">
                   <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+
                   <span>{addressParts.join(", ")}</span>
                 </div>
               )}
@@ -450,7 +463,11 @@ function ReservationCard({
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
             <CalendarDays className="mb-2 h-4 w-4 text-[#c9a45c]" />
-            <p className="text-xs text-white/40">Date</p>
+
+            <p className="text-xs text-white/40">
+              Date
+            </p>
+
             <p className="mt-1 text-sm font-medium">
               {formatDate(reservation.reservation_date)}
             </p>
@@ -458,7 +475,11 @@ function ReservationCard({
 
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
             <Clock3 className="mb-2 h-4 w-4 text-[#c9a45c]" />
-            <p className="text-xs text-white/40">Time</p>
+
+            <p className="text-xs text-white/40">
+              Time
+            </p>
+
             <p className="mt-1 text-sm font-medium">
               {formatTime(reservation.reservation_time)}
             </p>
@@ -466,7 +487,11 @@ function ReservationCard({
 
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
             <Users className="mb-2 h-4 w-4 text-[#c9a45c]" />
-            <p className="text-xs text-white/40">Guests</p>
+
+            <p className="text-xs text-white/40">
+              Guests
+            </p>
+
             <p className="mt-1 text-sm font-medium">
               {reservation.guests}{" "}
               {reservation.guests === 1 ? "Guest" : "Guests"}
@@ -476,7 +501,10 @@ function ReservationCard({
 
         <div className="mt-5 flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <p className="text-xs text-white/40">Booking ID</p>
+            <p className="text-xs text-white/40">
+              Booking ID
+            </p>
+
             <p className="font-mono text-xs text-white/60">
               {reservation.id.slice(0, 8).toUpperCase()}
             </p>

@@ -28,11 +28,6 @@ type ReservationRow = {
   status: string;
 };
 
-type ProfileRow = {
-  id: string;
-  created_at: string;
-};
-
 type RevenuePoint = {
   label: string;
   revenue: number;
@@ -125,62 +120,64 @@ export default function AnalyticsPage() {
     useState<OrderItemRow[]>([]);
   const [reservations, setReservations] =
     useState<ReservationRow[]>([]);
-  const [profiles, setProfiles] =
-    useState<ProfileRow[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [restaurantId, setRestaurantId] =
-    useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
 
-  async function loadAnalytics() {
-    try {
-      setLoading(true);
-      setError("");
+    async function loadAnalytics() {
+      try {
+        if (!cancelled) {
+          setLoading(true);
+          setError("");
+        }
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
 
-      if (userError) throw userError;
+        if (userError) throw userError;
 
-      if (!user) {
-        throw new Error("Please login first.");
-      }
+        if (!user) {
+          throw new Error("Please login first.");
+        }
 
-      /*
-       * -------------------------------------------------------
-       * FIND OWNER RESTAURANT
-       * -------------------------------------------------------
-       */
+        /*
+         * -------------------------------------------------------
+         * FIND OWNER RESTAURANT
+         * -------------------------------------------------------
+         */
 
-      const { data: restaurant, error: restaurantError } =
-        await supabase
+        const {
+          data: restaurant,
+          error: restaurantError,
+        } = await supabase
           .from("restaurants")
           .select("id")
           .eq("owner_id", user.id)
           .maybeSingle();
 
-      if (restaurantError) throw restaurantError;
+        if (restaurantError) throw restaurantError;
 
-      if (!restaurant) {
-        throw new Error(
-          "No restaurant is connected to this owner account."
-        );
-      }
+        if (!restaurant) {
+          throw new Error(
+            "No restaurant is connected to this owner account."
+          );
+        }
 
-      setRestaurantId(restaurant.id);
+        /*
+         * -------------------------------------------------------
+         * LOAD ORDERS
+         * -------------------------------------------------------
+         */
 
-      /*
-       * -------------------------------------------------------
-       * LOAD ORDERS
-       * -------------------------------------------------------
-       */
-
-      const { data: ordersData, error: ordersError } =
-        await supabase
+        const {
+          data: ordersData,
+          error: ordersError,
+        } = await supabase
           .from("orders")
           .select(
             `
@@ -196,23 +193,25 @@ export default function AnalyticsPage() {
             ascending: true,
           });
 
-      if (ordersError) throw ordersError;
+        if (ordersError) throw ordersError;
 
-      /*
-       * -------------------------------------------------------
-       * LOAD ORDER ITEMS
-       * -------------------------------------------------------
-       */
+        /*
+         * -------------------------------------------------------
+         * LOAD ORDER ITEMS
+         * -------------------------------------------------------
+         */
 
-      const orderIds = (ordersData ?? []).map(
-        (order) => order.id
-      );
+        const orderIds = (ordersData ?? []).map(
+          (order) => order.id
+        );
 
-      let itemsData: OrderItemRow[] = [];
+        let itemsData: OrderItemRow[] = [];
 
-      if (orderIds.length > 0) {
-        const { data, error: itemsError } =
-          await supabase
+        if (orderIds.length > 0) {
+          const {
+            data,
+            error: itemsError,
+          } = await supabase
             .from("order_items")
             .select(
               `
@@ -224,95 +223,85 @@ export default function AnalyticsPage() {
             )
             .in("order_id", orderIds);
 
-        if (itemsError) throw itemsError;
+          if (itemsError) throw itemsError;
 
-        itemsData = (data ?? []) as OrderItemRow[];
+          itemsData = (data ?? []) as OrderItemRow[];
+        }
+
+        /*
+         * -------------------------------------------------------
+         * LOAD RESERVATIONS
+         * -------------------------------------------------------
+         */
+
+        const {
+          data: reservationsData,
+          error: reservationsError,
+        } = await supabase
+          .from("reservations")
+          .select(
+            `
+              id,
+              customer_id,
+              reservation_date,
+              guests,
+              status
+            `
+          )
+          .eq("restaurant_id", restaurant.id)
+          .order("reservation_date", {
+            ascending: true,
+          });
+
+        if (reservationsError) {
+          throw reservationsError;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * LOAD CUSTOMER PROFILES
+         *
+         * The analytics UI currently does not use profile data.
+         * We therefore do not fetch it unnecessarily.
+         * -------------------------------------------------------
+         */
+
+        if (cancelled) return;
+
+        setOrders(
+          (ordersData ?? []) as OrderRow[]
+        );
+
+        setOrderItems(itemsData);
+
+        setReservations(
+          (reservationsData ?? []) as ReservationRow[]
+        );
+      } catch (err) {
+        if (cancelled) return;
+
+        console.error(
+          "Analytics loading error:",
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load analytics."
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-
-      /*
-       * -------------------------------------------------------
-       * LOAD RESERVATIONS
-       * -------------------------------------------------------
-       */
-
-      const {
-        data: reservationsData,
-        error: reservationsError,
-      } = await supabase
-        .from("reservations")
-        .select(
-          `
-            id,
-            customer_id,
-            reservation_date,
-            guests,
-            status
-          `
-        )
-        .eq("restaurant_id", restaurant.id)
-        .order("reservation_date", {
-          ascending: true,
-        });
-
-      if (reservationsError) throw reservationsError;
-
-      /*
-       * -------------------------------------------------------
-       * LOAD PROFILES
-       * -------------------------------------------------------
-       */
-
-      const customerIds = Array.from(
-        new Set(
-          (ordersData ?? [])
-            .map((order) => order.customer_id)
-            .filter(Boolean)
-            .concat(
-              (reservationsData ?? [])
-                .map(
-                  (reservation) =>
-                    reservation.customer_id
-                )
-                .filter(Boolean)
-            )
-        )
-      );
-
-      let profilesData: ProfileRow[] = [];
-
-      if (customerIds.length > 0) {
-        const { data, error: profilesError } =
-          await supabase
-            .from("profiles")
-            .select("id, created_at")
-            .in("id", customerIds);
-
-        if (profilesError) throw profilesError;
-
-        profilesData = (data ?? []) as ProfileRow[];
-      }
-
-      setOrders((ordersData ?? []) as OrderRow[]);
-      setOrderItems(itemsData);
-      setReservations(
-        (reservationsData ?? []) as ReservationRow[]
-      );
-      setProfiles(profilesData);
-    } catch (err) {
-      console.error("Analytics loading error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load analytics."
-      );
-    } finally {
-      setLoading(false);
     }
-  }
 
-  useEffect(() => {
-    loadAnalytics();
+    void loadAnalytics();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /*
@@ -379,12 +368,16 @@ export default function AnalyticsPage() {
 
       for (let i = 3; i >= 0; i--) {
         const end = new Date(now);
+
         end.setDate(
           now.getDate() - i * 7
         );
 
         const start = new Date(end);
-        start.setDate(end.getDate() - 6);
+
+        start.setDate(
+          end.getDate() - 6
+        );
 
         const weeklyOrders =
           successfulOrders.filter((order) => {
@@ -653,9 +646,14 @@ export default function AnalyticsPage() {
 
     for (let i = 6; i >= 0; i--) {
       const date = new Date(now);
-      date.setDate(now.getDate() - i);
 
-      const dateKey = date.toISOString().split("T")[0];
+      date.setDate(
+        now.getDate() - i
+      );
+
+      const dateKey = date
+        .toISOString()
+        .split("T")[0];
 
       const dayReservations =
         reservations.filter((reservation) => {
@@ -675,7 +673,8 @@ export default function AnalyticsPage() {
         bookings: dayReservations.length,
         guests: dayReservations.reduce(
           (sum, reservation) =>
-            sum + Number(reservation.guests || 0),
+            sum +
+            Number(reservation.guests || 0),
           0
         ),
       });
@@ -859,7 +858,7 @@ export default function AnalyticsPage() {
             </p>
 
             <button
-              onClick={loadAnalytics}
+              onClick={() => window.location.reload()}
               className="rounded-lg border border-red-500/20 px-4 py-2 text-sm text-red-300 hover:bg-red-500/10"
             >
               Retry
