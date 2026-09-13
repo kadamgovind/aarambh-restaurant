@@ -20,6 +20,55 @@ const serviceLinks = [
   { label: "My Account", href: "/account" },
 ];
 
+function formatOpeningHours(
+  value: Record<string, unknown> | null | undefined
+): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return Object.entries(value)
+    .filter(
+      ([, schedule]) =>
+        schedule !== null && schedule !== undefined
+    )
+    .map(([day, schedule]) => {
+      const formattedDay =
+        day.charAt(0).toUpperCase() + day.slice(1);
+
+      if (typeof schedule === "string") {
+        return `${formattedDay}: ${schedule}`;
+      }
+
+      if (
+        typeof schedule === "object" &&
+        schedule !== null
+      ) {
+        const item = schedule as Record<string, unknown>;
+
+        if (
+          typeof item.open === "string" &&
+          typeof item.close === "string"
+        ) {
+          return `${formattedDay}: ${item.open} – ${item.close}`;
+        }
+
+        if (
+          typeof item.opening === "string" &&
+          typeof item.closing === "string"
+        ) {
+          return `${formattedDay}: ${item.opening} – ${item.closing}`;
+        }
+
+        if (item.closed === true) {
+          return `${formattedDay}: Closed`;
+        }
+      }
+
+      return `${formattedDay}: ${String(schedule)}`;
+    });
+}
+
 export default function Footer() {
   const [restaurant, setRestaurant] =
     useState<Restaurant | null>(null);
@@ -91,17 +140,22 @@ export default function Footer() {
 
   const phone = restaurant?.phone || null;
   const email = restaurant?.email || null;
+  const mapsUrl = restaurant?.maps_url || null;
 
-  const address = restaurant?.address || null;
-  const city = restaurant?.city || null;
-  const state = restaurant?.state || null;
-  const pincode = restaurant?.pincode || null;
+  const locationParts = [
+    restaurant?.address,
+    restaurant?.city,
+    restaurant?.state,
+    restaurant?.pincode,
+  ].filter(Boolean) as string[];
 
   const orderingSettings =
     restaurant?.ordering_settings || {};
 
   const diningOptions = [
-    orderingSettings.pickup === true ? "Takeaway" : null,
+    orderingSettings.pickup === true
+      ? "Takeaway"
+      : null,
     orderingSettings.delivery === true
       ? "Home Delivery"
       : null,
@@ -110,12 +164,9 @@ export default function Footer() {
       : null,
   ].filter(Boolean) as string[];
 
-  const locationParts = [
-    address,
-    city,
-    state,
-    pincode,
-  ].filter(Boolean) as string[];
+  const openingHours = formatOpeningHours(
+    restaurant?.opening_hours
+  );
 
   return (
     <footer className="border-t border-white/10 bg-black">
@@ -126,6 +177,7 @@ export default function Footer() {
             <Link
               href="/"
               className="group inline-block"
+              aria-label={`${restaurantName} home`}
             >
               <h2 className="text-2xl font-semibold tracking-[-0.04em] text-white transition-colors duration-300 group-hover:text-[#c9a45c]">
                 {restaurantName}
@@ -164,7 +216,10 @@ export default function Footer() {
               Explore
             </p>
 
-            <nav className="mt-5 flex flex-col gap-3">
+            <nav
+              className="mt-5 flex flex-col gap-3"
+              aria-label="Explore"
+            >
               {exploreLinks.map((link) => (
                 <Link
                   key={link.href}
@@ -183,7 +238,10 @@ export default function Footer() {
               Services
             </p>
 
-            <nav className="mt-5 flex flex-col gap-3">
+            <nav
+              className="mt-5 flex flex-col gap-3"
+              aria-label="Services"
+            >
               {serviceLinks.map((link) => (
                 <Link
                   key={link.href}
@@ -224,7 +282,7 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Location + Dining */}
+        {/* Location + Opening Hours + Dining */}
         <div className="mt-14 grid gap-8 border-t border-white/10 pt-8 sm:grid-cols-2 lg:grid-cols-3">
           {/* Location */}
           <div>
@@ -232,26 +290,34 @@ export default function Footer() {
               Location
             </p>
 
-            <p className="mt-3 text-sm leading-6 text-white/50">
-              {locationParts.length > 0 ? (
-                locationParts.map((part, index) => (
+            {locationParts.length > 0 ? (
+              <p className="mt-3 text-sm leading-6 text-white/50">
+                {locationParts.map((part, index) => (
                   <span key={`${part}-${index}`}>
                     {part}
-
                     {index <
                       locationParts.length - 1 && (
                       <br />
                     )}
                   </span>
-                ))
-              ) : (
-                <>
-                  Restaurant location
-                  <br />
-                  Contact us for details
-                </>
-              )}
-            </p>
+                ))}
+              </p>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-white/40">
+                Contact us for location details.
+              </p>
+            )}
+
+            {mapsUrl && (
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex text-xs font-medium uppercase tracking-[0.15em] text-[#c9a45c] transition-colors hover:text-white"
+              >
+                Get Directions →
+              </a>
+            )}
           </div>
 
           {/* Opening Hours */}
@@ -260,11 +326,17 @@ export default function Footer() {
               Opening Hours
             </p>
 
-            <p className="mt-3 text-sm leading-6 text-white/50">
-              Check our current opening hours
-              <br />
-              before your visit.
-            </p>
+            {openingHours.length > 0 ? (
+              <div className="mt-3 space-y-1 text-sm leading-6 text-white/50">
+                {openingHours.map((hours) => (
+                  <p key={hours}>{hours}</p>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-white/40">
+                Opening hours will be updated soon.
+              </p>
+            )}
           </div>
 
           {/* Dining */}
@@ -273,20 +345,22 @@ export default function Footer() {
               Dining
             </p>
 
-            <p className="mt-3 text-sm leading-6 text-white/50">
-              {diningOptions.length > 0 ? (
-                diningOptions.map((option, index) => (
+            {diningOptions.length > 0 ? (
+              <p className="mt-3 text-sm leading-6 text-white/50">
+                {diningOptions.map((option, index) => (
                   <span key={option}>
                     {option}
-
                     {index <
-                      diningOptions.length - 1 && " • "}
+                      diningOptions.length - 1 &&
+                      " • "}
                   </span>
-                ))
-              ) : (
-                "Dining options available"
-              )}
-            </p>
+                ))}
+              </p>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-white/40">
+                Contact us for current dining options.
+              </p>
+            )}
           </div>
         </div>
 

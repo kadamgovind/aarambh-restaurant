@@ -3,9 +3,10 @@ import Footer from "@/components/Footer";
 
 import Hero from "@/components/home/Hero";
 import TrustStats from "@/components/home/TrustStats";
-import OurStory from "@/components/home/OurStory";
-import Philosophy from "@/components/home/Philosophy";
-import SignatureExperience from "@/components/home/SignatureExperience";
+import FeaturedMenu from "@/components/home/FeaturedMenu";
+import DiningExperience from "@/components/home/DiningExperience";
+import GalleryPreview from "@/components/home/GalleryPreview";
+import LocationAndHours from "@/components/home/LocationAndHours";
 import FinalCTA from "@/components/home/FinalCTA";
 
 export default function Home() {
@@ -17,11 +18,13 @@ export default function Home() {
 
       <TrustStats />
 
-      <OurStory />
+      <FeaturedMenu />
 
-      <Philosophy />
+      <DiningExperience />
 
-      <SignatureExperience />
+      <GalleryPreview />
+
+      <LocationAndHours />
 
       <FinalCTA />
 
