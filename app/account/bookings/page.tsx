@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   CalendarDays,
@@ -46,7 +47,21 @@ type Reservation = {
 };
 
 function formatDate(dateString: string) {
-  const date = new Date(`${dateString}T00:00:00`);
+  const parts = dateString.split("-").map(Number);
+
+  if (
+    parts.length !== 3 ||
+    parts.some((value) => Number.isNaN(value))
+  ) {
+    return dateString;
+  }
+
+  const [year, month, day] = parts;
+  const date = new Date(year, month - 1, day);
+
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
 
   return date.toLocaleDateString("en-IN", {
     day: "numeric",
@@ -56,7 +71,26 @@ function formatDate(dateString: string) {
 }
 
 function formatTime(timeString: string) {
-  const [hours, minutes] = timeString.split(":").map(Number);
+  const parts = timeString.split(":").map(Number);
+
+  if (
+    parts.length < 2 ||
+    Number.isNaN(parts[0]) ||
+    Number.isNaN(parts[1])
+  ) {
+    return timeString;
+  }
+
+  const [hours, minutes] = parts;
+
+  if (
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return timeString;
+  }
 
   const date = new Date();
   date.setHours(hours, minutes, 0, 0);
@@ -69,19 +103,26 @@ function formatTime(timeString: string) {
 }
 
 function getReservationDateTime(reservation: Reservation) {
-  return new Date(
+  const dateTime = new Date(
     `${reservation.reservation_date}T${reservation.reservation_time}`
-  ).getTime();
+  );
+
+  const timestamp = dateTime.getTime();
+
+  return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
 function getStatusLabel(status: ReservationStatus) {
   switch (status) {
     case "confirmed":
       return "Confirmed";
+
     case "completed":
       return "Completed";
+
     case "cancelled":
       return "Cancelled";
+
     default:
       return "Pending";
   }
@@ -91,10 +132,13 @@ function getStatusClasses(status: ReservationStatus) {
   switch (status) {
     case "confirmed":
       return "border-emerald-500/30 bg-emerald-500/10 text-emerald-400";
+
     case "completed":
       return "border-sky-500/30 bg-sky-500/10 text-sky-400";
+
     case "cancelled":
       return "border-red-500/30 bg-red-500/10 text-red-400";
+
     default:
       return "border-amber-500/30 bg-amber-500/10 text-amber-400";
   }
@@ -129,6 +173,7 @@ export default function AccountBookingsPage() {
             setNow(Date.now());
             setError("Please sign in to view your bookings.");
           }
+
           return;
         }
 
@@ -166,12 +211,15 @@ export default function AccountBookingsPage() {
 
         if (mounted) {
           setNow(Date.now());
-          setReservations((data ?? []) as unknown as Reservation[]);
+          setReservations(
+            (data ?? []) as unknown as Reservation[]
+          );
         }
       } catch (err) {
         console.error("Failed to load bookings:", err);
 
         if (mounted) {
+          setReservations([]);
           setError(
             "We couldn't load your bookings right now. Please try again."
           );
@@ -197,14 +245,24 @@ export default function AccountBookingsPage() {
     }
 
     return reservations
-      .filter(
-        (reservation) =>
-          reservation.status !== "cancelled" &&
-          getReservationDateTime(reservation) >= now
-      )
+      .filter((reservation) => {
+        if (reservation.status === "cancelled") {
+          return false;
+        }
+
+        const reservationTime =
+          getReservationDateTime(reservation);
+
+        return (
+          reservationTime > 0 &&
+          reservationTime >= now &&
+          reservation.status !== "completed"
+        );
+      })
       .sort(
         (a, b) =>
-          getReservationDateTime(a) - getReservationDateTime(b)
+          getReservationDateTime(a) -
+          getReservationDateTime(b)
       );
   }, [reservations, now]);
 
@@ -214,15 +272,26 @@ export default function AccountBookingsPage() {
     }
 
     return reservations
-      .filter(
-        (reservation) =>
+      .filter((reservation) => {
+        if (
           reservation.status === "completed" ||
-          reservation.status === "cancelled" ||
-          getReservationDateTime(reservation) < now
-      )
+          reservation.status === "cancelled"
+        ) {
+          return true;
+        }
+
+        const reservationTime =
+          getReservationDateTime(reservation);
+
+        return (
+          reservationTime > 0 &&
+          reservationTime < now
+        );
+      })
       .sort(
         (a, b) =>
-          getReservationDateTime(b) - getReservationDateTime(a)
+          getReservationDateTime(b) -
+          getReservationDateTime(a)
       );
   }, [reservations, now]);
 
@@ -231,7 +300,10 @@ export default function AccountBookingsPage() {
       <main className="min-h-screen bg-[#0a0a0a] px-4 py-12 text-white sm:px-6 lg:px-8">
         <div className="mx-auto flex min-h-[60vh] max-w-5xl items-center justify-center">
           <div className="flex flex-col items-center gap-4 text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-[#c9a45c]" />
+            <Loader2
+              className="h-8 w-8 animate-spin text-[#c9a45c]"
+              aria-hidden="true"
+            />
 
             <p className="text-sm text-white/60">
               Loading your bookings...
@@ -250,12 +322,21 @@ export default function AccountBookingsPage() {
             href="/account"
             className="mb-8 inline-flex items-center gap-2 text-sm text-white/60 transition hover:text-white"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft
+              className="h-4 w-4"
+              aria-hidden="true"
+            />
             Back to Account
           </Link>
 
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-8 text-center">
-            <AlertCircle className="mx-auto mb-4 h-10 w-10 text-red-400" />
+          <div
+            className="rounded-2xl border border-red-500/20 bg-red-500/5 p-8 text-center"
+            role="alert"
+          >
+            <AlertCircle
+              className="mx-auto mb-4 h-10 w-10 text-red-400"
+              aria-hidden="true"
+            />
 
             <h1 className="text-xl font-semibold">
               Unable to load bookings
@@ -285,7 +366,10 @@ export default function AccountBookingsPage() {
             href="/account"
             className="mb-8 inline-flex items-center gap-2 text-sm text-white/60 transition hover:text-white"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft
+              className="h-4 w-4"
+              aria-hidden="true"
+            />
             Back to Account
           </Link>
 
@@ -293,7 +377,10 @@ export default function AccountBookingsPage() {
             <div>
               <div className="mb-3 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#c9a45c]/30 bg-[#c9a45c]/10">
-                  <CalendarCheck2 className="h-5 w-5 text-[#c9a45c]" />
+                  <CalendarCheck2
+                    className="h-5 w-5 text-[#c9a45c]"
+                    aria-hidden="true"
+                  />
                 </div>
 
                 <span className="text-xs font-medium uppercase tracking-[0.2em] text-[#c9a45c]">
@@ -314,7 +401,10 @@ export default function AccountBookingsPage() {
               href="/booking"
               className="inline-flex items-center justify-center gap-2 rounded-full bg-[#c9a45c] px-5 py-3 text-sm font-semibold text-black transition hover:bg-[#d8b56d]"
             >
-              <CalendarDays className="h-4 w-4" />
+              <CalendarDays
+                className="h-4 w-4"
+                aria-hidden="true"
+              />
               Book a Table
             </Link>
           </div>
@@ -325,7 +415,10 @@ export default function AccountBookingsPage() {
         {reservations.length === 0 ? (
           <div className="rounded-3xl border border-white/10 bg-white/[0.03] px-6 py-16 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-[#c9a45c]/20 bg-[#c9a45c]/10">
-              <UtensilsCrossed className="h-7 w-7 text-[#c9a45c]" />
+              <UtensilsCrossed
+                className="h-7 w-7 text-[#c9a45c]"
+                aria-hidden="true"
+              />
             </div>
 
             <h2 className="mt-6 text-xl font-semibold">
@@ -333,8 +426,8 @@ export default function AccountBookingsPage() {
             </h2>
 
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-white/55">
-              You haven&apos;t made any table reservations yet. Reserve a table
-              and your booking will appear here.
+              You haven&apos;t made any table reservations yet.
+              Reserve a table and your booking will appear here.
             </p>
 
             <Link
@@ -392,6 +485,32 @@ export default function AccountBookingsPage() {
                 </div>
               </section>
             )}
+
+            {upcomingBookings.length === 0 &&
+              pastBookings.length === 0 && (
+                <div className="rounded-3xl border border-white/10 bg-white/[0.03] px-6 py-16 text-center">
+                  <AlertCircle
+                    className="mx-auto h-10 w-10 text-[#c9a45c]"
+                    aria-hidden="true"
+                  />
+
+                  <h2 className="mt-5 text-xl font-semibold">
+                    Booking information unavailable
+                  </h2>
+
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-white/55">
+                    We found your bookings, but their date or time
+                    information could not be displayed correctly.
+                  </p>
+
+                  <Link
+                    href="/booking"
+                    className="mt-7 inline-flex items-center justify-center rounded-full bg-[#c9a45c] px-6 py-3 text-sm font-semibold text-black transition hover:bg-[#d8b56d]"
+                  >
+                    Book a New Table
+                  </Link>
+                </div>
+              )}
           </div>
         )}
       </section>
@@ -425,14 +544,19 @@ function ReservationCard({
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5">
               {restaurant?.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <Image
                   src={restaurant.logo_url}
-                  alt={restaurant.name || "Restaurant"}
+                  alt={restaurant.name || "Restaurant logo"}
+                  width={48}
+                  height={48}
+                  sizes="48px"
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <UtensilsCrossed className="h-5 w-5 text-[#c9a45c]" />
+                <UtensilsCrossed
+                  className="h-5 w-5 text-[#c9a45c]"
+                  aria-hidden="true"
+                />
               )}
             </div>
 
@@ -443,7 +567,10 @@ function ReservationCard({
 
               {addressParts.length > 0 && (
                 <div className="mt-1 flex items-start gap-1.5 text-xs text-white/45">
-                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <MapPin
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
 
                   <span>{addressParts.join(", ")}</span>
                 </div>
@@ -462,7 +589,10 @@ function ReservationCard({
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <CalendarDays className="mb-2 h-4 w-4 text-[#c9a45c]" />
+            <CalendarDays
+              className="mb-2 h-4 w-4 text-[#c9a45c]"
+              aria-hidden="true"
+            />
 
             <p className="text-xs text-white/40">
               Date
@@ -474,7 +604,10 @@ function ReservationCard({
           </div>
 
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <Clock3 className="mb-2 h-4 w-4 text-[#c9a45c]" />
+            <Clock3
+              className="mb-2 h-4 w-4 text-[#c9a45c]"
+              aria-hidden="true"
+            />
 
             <p className="text-xs text-white/40">
               Time
@@ -486,7 +619,10 @@ function ReservationCard({
           </div>
 
           <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <Users className="mb-2 h-4 w-4 text-[#c9a45c]" />
+            <Users
+              className="mb-2 h-4 w-4 text-[#c9a45c]"
+              aria-hidden="true"
+            />
 
             <p className="text-xs text-white/40">
               Guests
@@ -494,7 +630,9 @@ function ReservationCard({
 
             <p className="mt-1 text-sm font-medium">
               {reservation.guests}{" "}
-              {reservation.guests === 1 ? "Guest" : "Guests"}
+              {reservation.guests === 1
+                ? "Guest"
+                : "Guests"}
             </p>
           </div>
         </div>
@@ -513,13 +651,19 @@ function ReservationCard({
           <div className="flex flex-wrap items-center gap-4 text-xs text-white/45">
             {reservation.customer_phone && (
               <span className="inline-flex items-center gap-1.5">
-                <Phone className="h-3.5 w-3.5" />
+                <Phone
+                  className="h-3.5 w-3.5"
+                  aria-hidden="true"
+                />
                 {reservation.customer_phone}
               </span>
             )}
 
             {reservation.special_request && (
-              <span className="max-w-xs truncate">
+              <span
+                className="max-w-xs truncate"
+                title={reservation.special_request}
+              >
                 Special request: {reservation.special_request}
               </span>
             )}

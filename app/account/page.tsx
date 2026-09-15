@@ -42,7 +42,9 @@ export default function AccountPage() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
 
-  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [reservations, setReservations] = useState<
+    Reservation[]
+  >([]);
   const [orders, setOrders] = useState<Order[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -78,7 +80,14 @@ export default function AccountPage() {
         } = await supabase.auth.getUser();
 
         if (userError) {
-          throw userError;
+          console.error(
+            "Account user loading error:",
+            userError
+          );
+
+          throw new Error(
+            "Unable to verify your account. Please sign in again."
+          );
         }
 
         if (!user) {
@@ -104,7 +113,14 @@ export default function AccountPage() {
             .maybeSingle();
 
         if (profileError) {
-          throw profileError;
+          console.error(
+            "Profile loading error:",
+            profileError
+          );
+
+          throw new Error(
+            "Unable to load your account profile."
+          );
         }
 
         /*
@@ -175,7 +191,7 @@ export default function AccountPage() {
         if (reservationError) {
           console.error(
             "Reservation loading error:",
-            reservationError.message
+            reservationError
           );
 
           if (mounted) {
@@ -205,7 +221,7 @@ export default function AccountPage() {
         if (orderError) {
           console.error(
             "Order loading error:",
-            orderError.message
+            orderError
           );
 
           if (mounted) {
@@ -256,7 +272,14 @@ export default function AccountPage() {
       } = await supabase.auth.getUser();
 
       if (userError) {
-        throw userError;
+        console.error(
+          "Profile update user error:",
+          userError
+        );
+
+        throw new Error(
+          "Unable to verify your account. Please sign in again."
+        );
       }
 
       if (!user) {
@@ -270,6 +293,37 @@ export default function AccountPage() {
       if (!cleanName) {
         setError("Please enter your full name.");
         return;
+      }
+
+      if (cleanName.length < 2) {
+        setError("Please enter a valid full name.");
+        return;
+      }
+
+      if (cleanName.length > 100) {
+        setError(
+          "Full name must be 100 characters or fewer."
+        );
+        return;
+      }
+
+      if (cleanPhone.length > 20) {
+        setError(
+          "Phone number must be 20 characters or fewer."
+        );
+        return;
+      }
+
+      if (cleanPhone) {
+        const phoneDigits = cleanPhone.replace(/\D/g, "");
+
+        if (
+          phoneDigits.length < 10 ||
+          phoneDigits.length > 15
+        ) {
+          setError("Please enter a valid phone number.");
+          return;
+        }
       }
 
       /*
@@ -291,7 +345,14 @@ export default function AccountPage() {
         .single();
 
       if (updateError) {
-        throw updateError;
+        console.error(
+          "Profile update error:",
+          updateError
+        );
+
+        throw new Error(
+          "Unable to save your profile changes. Please try again."
+        );
       }
 
       /*
@@ -316,7 +377,7 @@ export default function AccountPage() {
 
       setSaved(true);
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         setSaved(false);
       }, 2500);
     } catch (err) {
@@ -347,7 +408,14 @@ export default function AccountPage() {
         await supabase.auth.signOut();
 
       if (signOutError) {
-        throw signOutError;
+        console.error(
+          "Sign out error:",
+          signOutError
+        );
+
+        throw new Error(
+          "Unable to sign out. Please try again."
+        );
       }
 
       router.replace("/login");
@@ -396,18 +464,34 @@ export default function AccountPage() {
   function formatTime(time: string) {
     if (!time) return "";
 
-    const [hours, minutes] = time.split(":");
+    const [hours, minutes = "00"] = time.split(":");
 
     const hour = Number(hours);
 
-    if (Number.isNaN(hour)) {
+    if (
+      Number.isNaN(hour) ||
+      hour < 0 ||
+      hour > 23
+    ) {
+      return time;
+    }
+
+    const minuteNumber = Number(minutes);
+
+    if (
+      Number.isNaN(minuteNumber) ||
+      minuteNumber < 0 ||
+      minuteNumber > 59
+    ) {
       return time;
     }
 
     const suffix = hour >= 12 ? "PM" : "AM";
     const formattedHour = hour % 12 || 12;
 
-    return `${formattedHour}:${minutes} ${suffix}`;
+    return `${formattedHour}:${String(
+      minuteNumber
+    ).padStart(2, "0")} ${suffix}`;
   }
 
   /*
@@ -421,9 +505,15 @@ export default function AccountPage() {
       <main className="min-h-screen bg-black text-white">
         <Navbar />
 
-        <section className="flex min-h-[70vh] items-center justify-center pt-24">
+        <section
+          className="flex min-h-[70vh] items-center justify-center pt-24"
+          aria-live="polite"
+        >
           <div className="text-center">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-[#c9a45c]" />
+            <div
+              aria-hidden="true"
+              className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-[#c9a45c]"
+            />
 
             <p className="mt-6 text-xs uppercase tracking-[0.3em] text-white/40">
               Loading your account
@@ -465,6 +555,10 @@ export default function AccountPage() {
       const reservationDate = new Date(
         `${reservation.reservation_date}T00:00:00`
       );
+
+      if (Number.isNaN(reservationDate.getTime())) {
+        return false;
+      }
 
       const today = new Date();
 
@@ -514,7 +608,7 @@ export default function AccountPage() {
               className="inline-flex w-fit items-center gap-3 bg-[#c9a45c] px-6 py-4 text-sm font-medium text-black transition hover:bg-[#dfbd72]"
             >
               Book a Table
-              <span>→</span>
+              <span aria-hidden="true">→</span>
             </Link>
           </div>
         </div>
@@ -528,7 +622,10 @@ export default function AccountPage() {
 
           <aside className="border-b border-white/10 p-6 lg:min-h-[700px] lg:border-b-0 lg:border-r">
             <div className="mb-8 flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[#c9a45c]/40 bg-[#c9a45c]/10 text-lg text-[#c9a45c]">
+              <div
+                aria-hidden="true"
+                className="flex h-14 w-14 items-center justify-center rounded-full border border-[#c9a45c]/40 bg-[#c9a45c]/10 text-lg text-[#c9a45c]"
+              >
                 {firstLetter}
               </div>
 
@@ -543,7 +640,10 @@ export default function AccountPage() {
               </div>
             </div>
 
-            <nav className="space-y-1">
+            <nav
+              className="space-y-1"
+              aria-label="Account navigation"
+            >
               {[
                 ["overview", "Overview"],
                 ["profile", "My Profile"],
@@ -554,7 +654,13 @@ export default function AccountPage() {
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setActiveTab(id)}
+                  onClick={() => {
+                    setActiveTab(id);
+                    setError("");
+                  }}
+                  aria-current={
+                    activeTab === id ? "page" : undefined
+                  }
                   className={`w-full px-4 py-3 text-left text-sm transition ${
                     activeTab === id
                       ? "bg-white/[0.06] text-[#c9a45c]"
@@ -591,7 +697,11 @@ export default function AccountPage() {
 
           <div className="p-6 sm:p-10 lg:p-14">
             {error && (
-              <div className="mb-8 border border-red-400/20 bg-red-400/5 px-5 py-4 text-sm leading-6 text-red-300">
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="mb-8 border border-red-400/20 bg-red-400/5 px-5 py-4 text-sm leading-6 text-red-300"
+              >
                 {error}
               </div>
             )}
@@ -762,7 +872,9 @@ export default function AccountPage() {
                       href="/menu"
                       className="border border-white/10 p-6 transition hover:border-[#c9a45c]/40"
                     >
-                      <span className="text-2xl">◈</span>
+                      <span aria-hidden="true" className="text-2xl">
+                        ◈
+                      </span>
 
                       <h3 className="mt-5 text-lg font-light">
                         Explore Menu
@@ -777,7 +889,9 @@ export default function AccountPage() {
                       href="/order"
                       className="border border-white/10 p-6 transition hover:border-[#c9a45c]/40"
                     >
-                      <span className="text-2xl">＋</span>
+                      <span aria-hidden="true" className="text-2xl">
+                        ＋
+                      </span>
 
                       <h3 className="mt-5 text-lg font-light">
                         Order Online
@@ -792,7 +906,9 @@ export default function AccountPage() {
                       href="/gallery"
                       className="border border-white/10 p-6 transition hover:border-[#c9a45c]/40"
                     >
-                      <span className="text-2xl">◇</span>
+                      <span aria-hidden="true" className="text-2xl">
+                        ◇
+                      </span>
 
                       <h3 className="mt-5 text-lg font-light">
                         Explore Aarambh
@@ -838,6 +954,8 @@ export default function AccountPage() {
                       onChange={(e) =>
                         setFullName(e.target.value)
                       }
+                      maxLength={100}
+                      autoComplete="name"
                       placeholder="Enter your full name"
                       className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm outline-none transition focus:border-[#c9a45c]"
                     />
@@ -880,17 +998,26 @@ export default function AccountPage() {
                       onChange={(e) =>
                         setPhone(e.target.value)
                       }
+                      maxLength={20}
+                      autoComplete="tel"
+                      inputMode="tel"
                       placeholder="Enter your phone number"
                       className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm outline-none transition focus:border-[#c9a45c]"
                     />
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/40">
+                    <label
+                      htmlFor="accountType"
+                      className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/40"
+                    >
                       Account Type
                     </label>
 
-                    <div className="w-full border border-white/10 bg-white/[0.02] px-4 py-4 text-sm capitalize text-white/50">
+                    <div
+                      id="accountType"
+                      className="w-full border border-white/10 bg-white/[0.02] px-4 py-4 text-sm capitalize text-white/50"
+                    >
                       {profile?.role || "customer"}
                     </div>
                   </div>
@@ -1027,46 +1154,58 @@ export default function AccountPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {orders.map((order) => (
-                      <div
-                        key={order.id}
-                        className="border border-white/10 bg-white/[0.02] p-6"
-                      >
-                        <div className="flex flex-col justify-between gap-6 sm:flex-row">
-                          <div>
-                            <p className="text-sm text-[#c9a45c]">
-                              Order
-                            </p>
+                    {orders.map((order) => {
+                      const totalAmount = Number(
+                        order.total_amount
+                      );
 
-                            <p className="mt-2 text-xs text-white/35">
-                              {formatDate(order.created_at)}
-                            </p>
+                      const formattedTotal =
+                        Number.isFinite(totalAmount)
+                          ? totalAmount.toLocaleString(
+                              "en-IN"
+                            )
+                          : "0";
 
-                            <p className="mt-4 text-sm text-white/60">
-                              {order.order_number
-                                ? `Order #${order.order_number}`
-                                : `Order #${order.id.slice(
-                                    0,
-                                    8
-                                  )}`}
-                            </p>
-                          </div>
+                      return (
+                        <div
+                          key={order.id}
+                          className="border border-white/10 bg-white/[0.02] p-6"
+                        >
+                          <div className="flex flex-col justify-between gap-6 sm:flex-row">
+                            <div>
+                              <p className="text-sm text-[#c9a45c]">
+                                Order
+                              </p>
 
-                          <div className="sm:text-right">
-                            <p className="text-lg font-light">
-                              ₹
-                              {Number(
-                                order.total_amount
-                              ).toLocaleString("en-IN")}
-                            </p>
+                              <p className="mt-2 text-xs text-white/35">
+                                {formatDate(
+                                  order.created_at
+                                )}
+                              </p>
 
-                            <span className="mt-3 inline-block bg-white/[0.05] px-3 py-2 text-xs capitalize text-white/40">
-                              {order.status}
-                            </span>
+                              <p className="mt-4 text-sm text-white/60">
+                                {order.order_number
+                                  ? `Order #${order.order_number}`
+                                  : `Order #${order.id.slice(
+                                      0,
+                                      8
+                                    )}`}
+                              </p>
+                            </div>
+
+                            <div className="sm:text-right">
+                              <p className="text-lg font-light">
+                                ₹{formattedTotal}
+                              </p>
+
+                              <span className="mt-3 inline-block bg-white/[0.05] px-3 py-2 text-xs capitalize text-white/40">
+                                {order.status}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

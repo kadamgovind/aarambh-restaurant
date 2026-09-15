@@ -14,6 +14,9 @@ export default function ContactPage() {
 
     setLoading(true);
 
+    // Temporary frontend-only submission state.
+    // Connect this form to the production contact API/Supabase
+    // once the contact-message backend is finalized.
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     setLoading(false);
@@ -50,19 +53,24 @@ export default function ContactPage() {
         <div className="mx-auto grid max-w-7xl gap-5 md:grid-cols-2 lg:grid-cols-4">
           {/* LOCATION */}
           <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-7">
-            <span className="text-2xl text-[#c9a45c]">⌖</span>
+            <span
+              aria-hidden="true"
+              className="text-2xl text-[#c9a45c]"
+            >
+              ⌖
+            </span>
 
             <p className="mt-6 text-xs uppercase tracking-[0.25em] text-white/35">
               Visit Us
             </p>
 
-            <p className="mt-4 text-sm leading-7 text-white/65">
+            <address className="mt-4 not-italic text-sm leading-7 text-white/65">
               Narhe
               <br />
               Pune, Maharashtra
               <br />
               411041, India
-            </p>
+            </address>
 
             <p className="mt-4 text-xs leading-5 text-white/30">
               Exact restaurant address will be added once the official
@@ -72,7 +80,12 @@ export default function ContactPage() {
 
           {/* HOURS */}
           <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-7">
-            <span className="text-2xl text-[#c9a45c]">◷</span>
+            <span
+              aria-hidden="true"
+              className="text-2xl text-[#c9a45c]"
+            >
+              ◷
+            </span>
 
             <p className="mt-6 text-xs uppercase tracking-[0.25em] text-white/35">
               Opening Hours
@@ -93,7 +106,12 @@ export default function ContactPage() {
 
           {/* PHONE */}
           <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-7">
-            <span className="text-2xl text-[#c9a45c]">☎</span>
+            <span
+              aria-hidden="true"
+              className="text-2xl text-[#c9a45c]"
+            >
+              ☎
+            </span>
 
             <p className="mt-6 text-xs uppercase tracking-[0.25em] text-white/35">
               Call Us
@@ -101,6 +119,7 @@ export default function ContactPage() {
 
             <a
               href="tel:+917498168865"
+              aria-label="Call Aarambh Restaurant at plus 91 74981 68865"
               className="mt-4 block text-sm text-white/65 transition hover:text-[#c9a45c]"
             >
               +91 74981 68865
@@ -113,7 +132,12 @@ export default function ContactPage() {
 
           {/* EMAIL */}
           <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-7">
-            <span className="text-2xl text-[#c9a45c]">✉</span>
+            <span
+              aria-hidden="true"
+              className="text-2xl text-[#c9a45c]"
+            >
+              ✉
+            </span>
 
             <p className="mt-6 text-xs uppercase tracking-[0.25em] text-white/35">
               Email
@@ -152,8 +176,15 @@ export default function ContactPage() {
             </p>
 
             {submitted ? (
-              <div className="mt-10 rounded-3xl border border-[#c9a45c]/30 bg-[#c9a45c]/5 p-8">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#c9a45c]/10 text-2xl text-[#c9a45c]">
+              <div
+                className="mt-10 rounded-3xl border border-[#c9a45c]/30 bg-[#c9a45c]/5 p-8"
+                role="status"
+                aria-live="polite"
+              >
+                <div
+                  aria-hidden="true"
+                  className="flex h-14 w-14 items-center justify-center rounded-full bg-[#c9a45c]/10 text-2xl text-[#c9a45c]"
+                >
                   ✓
                 </div>
 
@@ -167,6 +198,7 @@ export default function ContactPage() {
                 </p>
 
                 <button
+                  type="button"
                   onClick={() => setSubmitted(false)}
                   className="mt-7 rounded-full border border-white/15 px-6 py-3 text-sm transition hover:border-white/30"
                 >
@@ -179,76 +211,134 @@ export default function ContactPage() {
                 className="mt-10 space-y-5"
               >
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <input
-                    required
-                    type="text"
-                    name="name"
-                    placeholder="Full Name"
-                    autoComplete="name"
-                    className="rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm outline-none placeholder:text-white/25 focus:border-[#c9a45c]/50"
-                  />
+                  <div>
+                    <label
+                      htmlFor="contact-name"
+                      className="sr-only"
+                    >
+                      Full Name
+                    </label>
+
+                    <input
+                      id="contact-name"
+                      required
+                      type="text"
+                      name="name"
+                      placeholder="Full Name"
+                      autoComplete="name"
+                      maxLength={100}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm outline-none placeholder:text-white/25 focus:border-[#c9a45c]/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="contact-phone"
+                      className="sr-only"
+                    >
+                      Phone Number
+                    </label>
+
+                    <input
+                      id="contact-phone"
+                      required
+                      type="tel"
+                      name="phone"
+                      placeholder="Phone Number"
+                      autoComplete="tel"
+                      inputMode="tel"
+                      maxLength={20}
+                      pattern="[0-9+\-\s()]{7,20}"
+                      title="Please enter a valid phone number."
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm outline-none placeholder:text-white/25 focus:border-[#c9a45c]/50"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="contact-email"
+                    className="sr-only"
+                  >
+                    Email Address
+                  </label>
 
                   <input
+                    id="contact-email"
                     required
-                    type="tel"
-                    name="phone"
-                    placeholder="Phone Number"
-                    autoComplete="tel"
-                    className="rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm outline-none placeholder:text-white/25 focus:border-[#c9a45c]/50"
+                    type="email"
+                    name="email"
+                    placeholder="Email Address"
+                    autoComplete="email"
+                    maxLength={150}
+                    className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm outline-none placeholder:text-white/25 focus:border-[#c9a45c]/50"
                   />
                 </div>
 
-                <input
-                  required
-                  type="email"
-                  name="email"
-                  placeholder="Email Address"
-                  autoComplete="email"
-                  className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm outline-none placeholder:text-white/25 focus:border-[#c9a45c]/50"
-                />
+                <div>
+                  <label
+                    htmlFor="contact-enquiry"
+                    className="sr-only"
+                  >
+                    Enquiry Type
+                  </label>
 
-                <select
-                  required
-                  name="enquiry"
-                  defaultValue=""
-                  className="w-full rounded-2xl border border-white/10 bg-[#0b0b0b] px-5 py-4 text-sm text-white/50 outline-none focus:border-[#c9a45c]/50"
-                >
-                  <option value="" disabled>
-                    Select Enquiry Type
-                  </option>
+                  <select
+                    id="contact-enquiry"
+                    required
+                    name="enquiry"
+                    defaultValue=""
+                    className="w-full rounded-2xl border border-white/10 bg-[#0b0b0b] px-5 py-4 text-sm text-white/50 outline-none focus:border-[#c9a45c]/50"
+                  >
+                    <option value="" disabled>
+                      Select Enquiry Type
+                    </option>
 
-                  <option value="reservation">
-                    Table Reservation
-                  </option>
+                    <option value="reservation">
+                      Table Reservation
+                    </option>
 
-                  <option value="order">
-                    Online Order
-                  </option>
+                    <option value="order">
+                      Online Order
+                    </option>
 
-                  <option value="event">
-                    Events & Celebrations
-                  </option>
+                    <option value="event">
+                      Events &amp; Celebrations
+                    </option>
 
-                  <option value="feedback">
-                    Feedback
-                  </option>
+                    <option value="feedback">
+                      Feedback
+                    </option>
 
-                  <option value="general">
-                    General Enquiry
-                  </option>
-                </select>
+                    <option value="general">
+                      General Enquiry
+                    </option>
+                  </select>
+                </div>
 
-                <textarea
-                  required
-                  name="message"
-                  rows={6}
-                  placeholder="Your Message"
-                  className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm outline-none placeholder:text-white/25 focus:border-[#c9a45c]/50"
-                />
+                <div>
+                  <label
+                    htmlFor="contact-message"
+                    className="sr-only"
+                  >
+                    Your Message
+                  </label>
+
+                  <textarea
+                    id="contact-message"
+                    required
+                    name="message"
+                    rows={6}
+                    placeholder="Your Message"
+                    maxLength={2000}
+                    className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm outline-none placeholder:text-white/25 focus:border-[#c9a45c]/50"
+                  />
+                </div>
 
                 <button
                   type="submit"
                   disabled={loading}
+                  aria-disabled={loading}
                   className="rounded-full bg-[#c9a45c] px-8 py-4 text-sm font-medium text-black transition hover:bg-[#d8b873] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? "Sending..." : "Send Message"}
@@ -260,7 +350,10 @@ export default function ContactPage() {
           {/* LOCATION */}
           <div>
             <div className="relative min-h-[560px] overflow-hidden rounded-3xl border border-white/10 bg-[#111]">
-              <div className="absolute inset-0 opacity-30">
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 opacity-30"
+              >
                 <div className="absolute left-[15%] top-[20%] h-px w-[80%] rotate-12 bg-white/20" />
 
                 <div className="absolute left-[5%] top-[45%] h-px w-[95%] -rotate-6 bg-white/15" />
@@ -276,9 +369,15 @@ export default function ContactPage() {
 
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <div className="relative">
-                  <div className="absolute -inset-5 animate-ping rounded-full bg-[#c9a45c]/10" />
+                  <div
+                    aria-hidden="true"
+                    className="absolute -inset-5 animate-ping rounded-full bg-[#c9a45c]/10"
+                  />
 
-                  <div className="relative flex h-16 w-16 items-center justify-center rounded-full border border-[#c9a45c]/50 bg-black text-2xl text-[#c9a45c] shadow-2xl">
+                  <div
+                    aria-hidden="true"
+                    className="relative flex h-16 w-16 items-center justify-center rounded-full border border-[#c9a45c]/50 bg-black text-2xl text-[#c9a45c] shadow-2xl"
+                  >
                     ⌖
                   </div>
                 </div>
@@ -289,13 +388,13 @@ export default function ContactPage() {
                   Aarambh Restaurant
                 </p>
 
-                <p className="mt-3 text-sm leading-6 text-white/60">
+                <address className="mt-3 not-italic text-sm leading-6 text-white/60">
                   Narhe
                   <br />
                   Pune, Maharashtra – 411041
                   <br />
                   India
-                </p>
+                </address>
 
                 <p className="mt-4 text-xs leading-5 text-white/35">
                   Official map location will be connected after the
@@ -313,7 +412,7 @@ export default function ContactPage() {
           <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
-                Events & Celebrations
+                Events &amp; Celebrations
               </p>
 
               <h2 className="mt-5 text-4xl font-light tracking-tight md:text-5xl">

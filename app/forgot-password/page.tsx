@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 
@@ -17,16 +18,22 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
 
     setError("");
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setError("Please enter your email address.");
+      return;
+    }
+
+    if (normalizedEmail.length > 254) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const normalizedEmail = email.trim().toLowerCase();
-
-      if (!normalizedEmail) {
-        setError("Please enter your email address.");
-        return;
-      }
-
       const redirectTo = `${window.location.origin}/reset-password`;
 
       const { error: resetError } =
@@ -36,10 +43,24 @@ export default function ForgotPasswordPage() {
 
       if (resetError) {
         console.error("Password reset error:", resetError);
-        setError(
-          resetError.message ||
+
+        const message = resetError.message.toLowerCase();
+
+        if (message.includes("rate limit")) {
+          setError(
+            "Too many reset requests. Please wait a little and try again."
+          );
+        } else if (
+          message.includes("invalid") &&
+          message.includes("email")
+        ) {
+          setError("Please enter a valid email address.");
+        } else {
+          setError(
             "Unable to send the password reset email. Please try again."
-        );
+          );
+        }
+
         return;
       }
 
@@ -61,16 +82,18 @@ export default function ForgotPasswordPage() {
 
       <section className="min-h-screen border-b border-white/10 pt-24">
         <div className="mx-auto grid min-h-[calc(100vh-96px)] max-w-7xl lg:grid-cols-2">
-
           {/* =====================================================
               LEFT — VISUAL PANEL
           ===================================================== */}
 
           <div className="relative hidden overflow-hidden border-r border-white/10 lg:block">
-            <img
+            <Image
               src="/images/signature-dish.png"
               alt="Aarambh Restaurant dining experience"
-              className="absolute inset-0 h-full w-full object-cover"
+              fill
+              priority
+              sizes="(min-width: 1024px) 50vw, 0px"
+              className="object-cover"
             />
 
             <div className="absolute inset-0 bg-black/60" />
@@ -104,7 +127,6 @@ export default function ForgotPasswordPage() {
 
           <div className="flex items-center px-6 py-16 sm:px-10 lg:px-16 xl:px-20">
             <div className="mx-auto w-full max-w-md">
-
               {!submitted ? (
                 <>
                   {/* Header */}
@@ -145,13 +167,20 @@ export default function ForgotPasswordPage() {
                         type="email"
                         autoComplete="email"
                         required
+                        maxLength={254}
                         value={email}
                         onChange={(e) => {
                           setEmail(e.target.value);
-                          if (error) setError("");
+
+                          if (error) {
+                            setError("");
+                          }
                         }}
                         placeholder="you@example.com"
                         disabled={loading}
+                        aria-describedby={
+                          error ? "reset-error" : undefined
+                        }
                         className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-50"
                       />
                     </div>
@@ -160,7 +189,9 @@ export default function ForgotPasswordPage() {
 
                     {error && (
                       <div
+                        id="reset-error"
                         role="alert"
+                        aria-live="assertive"
                         className="border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-300"
                       >
                         {error}
@@ -174,14 +205,20 @@ export default function ForgotPasswordPage() {
                     >
                       {loading ? (
                         <>
-                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+                          <span
+                            aria-hidden="true"
+                            className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black"
+                          />
                           Sending...
                         </>
                       ) : (
                         <>
                           Send Reset Link
 
-                          <span className="transition-transform group-hover:translate-x-1">
+                          <span
+                            aria-hidden="true"
+                            className="transition-transform group-hover:translate-x-1"
+                          >
                             →
                           </span>
                         </>
@@ -215,9 +252,11 @@ export default function ForgotPasswordPage() {
                 ================================================= */
 
                 <div className="py-10 text-center">
-
                   <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-[#c9a45c]/40 bg-[#c9a45c]/10">
-                    <span className="text-3xl text-[#c9a45c]">
+                    <span
+                      aria-hidden="true"
+                      className="text-3xl text-[#c9a45c]"
+                    >
                       ✓
                     </span>
                   </div>

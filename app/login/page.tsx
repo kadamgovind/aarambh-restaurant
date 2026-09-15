@@ -1,10 +1,12 @@
 "use client";
 
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
@@ -41,7 +43,7 @@ export default function LoginPage() {
       }
     }
 
-    checkSession();
+    void checkSession();
 
     return () => {
       mounted = false;
@@ -204,9 +206,7 @@ export default function LoginPage() {
         message =
           "Incorrect email or password. Please try again.";
       } else if (
-        lowerMessage.includes(
-          "email not confirmed"
-        )
+        lowerMessage.includes("email not confirmed")
       ) {
         message =
           "Please confirm your email address before signing in.";
@@ -268,7 +268,11 @@ export default function LoginPage() {
         <Navbar />
 
         <section className="flex min-h-[70vh] items-center justify-center px-6 pt-24">
-          <div className="flex flex-col items-center text-center">
+          <div
+            className="flex flex-col items-center text-center"
+            role="status"
+            aria-live="polite"
+          >
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-[#c9a45c]" />
 
             <p className="mt-5 text-sm text-white/40">
@@ -291,7 +295,6 @@ export default function LoginPage() {
       <Navbar />
 
       <section className="min-h-screen border-b border-white/10 pt-24">
-
         <div className="mx-auto grid min-h-[calc(100vh-96px)] max-w-7xl lg:grid-cols-2">
 
           {/* ==================================================
@@ -299,19 +302,26 @@ export default function LoginPage() {
           ================================================== */}
 
           <div className="relative hidden overflow-hidden border-r border-white/10 lg:block">
-
-            <img
+            <Image
               src="/images/signature-dish.png"
               alt="Aarambh Restaurant signature dish"
-              className="absolute inset-0 h-full w-full object-cover"
+              fill
+              priority
+              sizes="(min-width: 1024px) 50vw, 0px"
+              className="object-cover"
             />
 
-            <div className="absolute inset-0 bg-black/60" />
+            <div
+              className="absolute inset-0 bg-black/60"
+              aria-hidden="true"
+            />
 
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+            <div
+              className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"
+              aria-hidden="true"
+            />
 
             <div className="absolute bottom-0 left-0 right-0 p-12">
-
               <p className="mb-5 text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
                 Welcome Back
               </p>
@@ -330,7 +340,6 @@ export default function LoginPage() {
                 Sign in to manage your reservations,
                 orders and Aarambh customer account.
               </p>
-
             </div>
           </div>
 
@@ -339,13 +348,11 @@ export default function LoginPage() {
           ================================================== */}
 
           <div className="flex items-center px-6 py-16 sm:px-10 lg:px-16 xl:px-20">
-
             <div className="mx-auto w-full max-w-md">
 
               {/* HEADER */}
 
               <div className="mb-10">
-
                 <p className="mb-4 text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
                   Customer Account
                 </p>
@@ -358,7 +365,6 @@ export default function LoginPage() {
                   Sign in to manage your Aarambh
                   reservations, orders and profile.
                 </p>
-
               </div>
 
               {/* ERROR */}
@@ -366,6 +372,7 @@ export default function LoginPage() {
               {error && (
                 <div
                   role="alert"
+                  aria-live="assertive"
                   className="mb-6 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm leading-6 text-red-300"
                 >
                   {error}
@@ -378,11 +385,9 @@ export default function LoginPage() {
                 onSubmit={handleSubmit}
                 className="space-y-5"
               >
-
                 {/* EMAIL */}
 
                 <div>
-
                   <label
                     htmlFor="email"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/40"
@@ -397,18 +402,16 @@ export default function LoginPage() {
                     autoComplete="email"
                     required
                     disabled={loading}
+                    maxLength={254}
                     placeholder="you@example.com"
                     className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50 disabled:cursor-not-allowed disabled:opacity-60"
                   />
-
                 </div>
 
                 {/* PASSWORD */}
 
                 <div>
-
                   <div className="mb-2 flex items-center justify-between">
-
                     <label
                       htmlFor="password"
                       className="block text-xs uppercase tracking-[0.2em] text-white/40"
@@ -422,11 +425,9 @@ export default function LoginPage() {
                     >
                       Forgot password?
                     </Link>
-
                   </div>
 
                   <div className="relative">
-
                     <input
                       id="password"
                       name="password"
@@ -438,6 +439,7 @@ export default function LoginPage() {
                       autoComplete="current-password"
                       required
                       disabled={loading}
+                      maxLength={128}
                       placeholder="Your password"
                       className="w-full rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 pr-16 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c9a45c]/50 disabled:cursor-not-allowed disabled:opacity-60"
                     />
@@ -445,9 +447,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() =>
-                        setShowPassword(
-                          !showPassword
-                        )
+                        setShowPassword((current) => !current)
                       }
                       disabled={loading}
                       aria-label={
@@ -455,21 +455,17 @@ export default function LoginPage() {
                           ? "Hide password"
                           : "Show password"
                       }
+                      aria-pressed={showPassword}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 transition hover:text-[#c9a45c] disabled:opacity-40"
                     >
-                      {showPassword
-                        ? "Hide"
-                        : "Show"}
+                      {showPassword ? "Hide" : "Show"}
                     </button>
-
                   </div>
-
                 </div>
 
                 {/* REMEMBER */}
 
                 <div className="flex items-center gap-3 pt-1">
-
                   <input
                     id="remember"
                     name="remember"
@@ -484,7 +480,6 @@ export default function LoginPage() {
                   >
                     Keep me signed in
                   </label>
-
                 </div>
 
                 {/* SUBMIT */}
@@ -494,29 +489,27 @@ export default function LoginPage() {
                   disabled={loading}
                   className="flex w-full items-center justify-center gap-3 rounded-full bg-[#c9a45c] py-4 text-sm font-medium text-black transition hover:bg-[#d8b873] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-
                   {loading ? (
                     <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+                      <span
+                        className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black"
+                        aria-hidden="true"
+                      />
 
                       Signing in...
                     </>
                   ) : (
                     <>
                       Sign In
-
-                      <span>→</span>
+                      <span aria-hidden="true">→</span>
                     </>
                   )}
-
                 </button>
-
               </form>
 
               {/* DIVIDER */}
 
               <div className="my-8 flex items-center gap-4">
-
                 <div className="h-px flex-1 bg-white/10" />
 
                 <span className="text-xs text-white/25">
@@ -524,7 +517,6 @@ export default function LoginPage() {
                 </span>
 
                 <div className="h-px flex-1 bg-white/10" />
-
               </div>
 
               {/* GOOGLE */}
@@ -535,7 +527,6 @@ export default function LoginPage() {
                 disabled={loading}
                 className="flex w-full items-center justify-center gap-3 rounded-full border border-white/10 bg-white/[0.02] py-4 text-sm text-white/60 transition hover:border-white/25 hover:bg-white/[0.05] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
-
                 <span
                   aria-hidden="true"
                   className="text-base font-medium"
@@ -544,13 +535,11 @@ export default function LoginPage() {
                 </span>
 
                 Continue with Google
-
               </button>
 
               {/* REGISTER */}
 
               <p className="mt-8 text-center text-sm text-white/35">
-
                 Don&apos;t have an account?{" "}
 
                 <Link
@@ -559,13 +548,11 @@ export default function LoginPage() {
                 >
                   Create account
                 </Link>
-
               </p>
 
               {/* OWNER */}
 
               <div className="mt-6 text-center">
-
                 <p className="text-xs text-white/30">
                   Are you a restaurant owner?
                 </p>
@@ -576,23 +563,18 @@ export default function LoginPage() {
                 >
                   Owner Sign In →
                 </Link>
-
               </div>
 
               {/* SECURITY NOTE */}
 
               <div className="mt-10 border-t border-white/10 pt-6 text-center">
-
                 <p className="text-xs leading-5 text-white/30">
                   Your account information is securely
                   stored and protected.
                 </p>
-
               </div>
-
             </div>
           </div>
-
         </div>
       </section>
 

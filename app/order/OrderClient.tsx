@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -14,9 +15,7 @@ import {
   type CartItem,
 } from "@/lib/cart";
 
-import {
-  getActiveRestaurant,
-} from "@/lib/restaurant";
+import { getActiveRestaurant } from "@/lib/restaurant";
 
 import {
   getMenuData,
@@ -27,6 +26,8 @@ import {
 type Restaurant = Awaited<
   ReturnType<typeof getActiveRestaurant>
 >;
+
+const fallbackImage = "/images/signature-dish.png";
 
 export default function OrderClient() {
   const [restaurant, setRestaurant] =
@@ -50,6 +51,10 @@ export default function OrderClient() {
   const [error, setError] = useState<string | null>(
     null
   );
+
+  const [failedImages, setFailedImages] = useState<
+    Record<string, boolean>
+  >({});
 
   useEffect(() => {
     async function loadOrderData() {
@@ -75,8 +80,8 @@ export default function OrderClient() {
 
         setCategories(data.categories);
         setMenuItems(data.items);
-
         setCartItems(getCartItems());
+        setFailedImages({});
       } catch (err) {
         console.error(
           "Failed to load ordering page:",
@@ -152,6 +157,19 @@ export default function OrderClient() {
     );
   }
 
+  function handleImageError(itemId: string) {
+    setFailedImages((current) => {
+      if (current[itemId]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [itemId]: true,
+      };
+    });
+  }
+
   function handleAddToCart(item: MenuItem) {
     if (!restaurant) {
       return;
@@ -211,8 +229,15 @@ export default function OrderClient() {
         <Navbar />
 
         <section className="flex min-h-[75vh] items-center justify-center px-6 pt-24">
-          <div className="text-center">
-            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-[#c9a45c]" />
+          <div
+            className="text-center"
+            role="status"
+            aria-live="polite"
+          >
+            <div
+              className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-[#c9a45c]"
+              aria-hidden="true"
+            />
 
             <p className="mt-6 text-sm text-white/40">
               Loading our menu...
@@ -229,7 +254,10 @@ export default function OrderClient() {
         <Navbar />
 
         <section className="flex min-h-[75vh] items-center justify-center px-6 pt-24">
-          <div className="max-w-xl text-center">
+          <div
+            className="max-w-xl text-center"
+            role="alert"
+          >
             <p className="text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
               Ordering
             </p>
@@ -273,7 +301,7 @@ export default function OrderClient() {
           </h1>
 
           <p className="mt-7 max-w-2xl text-lg leading-8 text-white/55">
-            Order from our current menu and enjoy
+            Order from our current menu and enjoy{" "}
             {restaurantName} wherever you are.
           </p>
         </div>
@@ -281,9 +309,14 @@ export default function OrderClient() {
 
       {/* CATEGORY NAVIGATION */}
       <section className="sticky top-[73px] z-30 border-b border-white/10 bg-black/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-6 py-4 lg:px-8">
+        <div
+          className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-6 py-4 lg:px-8"
+          role="group"
+          aria-label="Menu categories"
+        >
           <button
             type="button"
+            aria-pressed={selectedCategory === "all"}
             onClick={() =>
               setSelectedCategory("all")
             }
@@ -300,6 +333,9 @@ export default function OrderClient() {
             <button
               key={category.id}
               type="button"
+              aria-pressed={
+                selectedCategory === category.id
+              }
               onClick={() =>
                 setSelectedCategory(category.id)
               }
@@ -344,7 +380,10 @@ export default function OrderClient() {
 
             {filteredItems.length === 0 ? (
               <div className="rounded-3xl border border-white/10 bg-white/[0.025] px-6 py-20 text-center">
-                <div className="text-4xl text-white/20">
+                <div
+                  className="text-4xl text-white/20"
+                  aria-hidden="true"
+                >
                   🍽️
                 </div>
 
@@ -362,6 +401,12 @@ export default function OrderClient() {
                   const quantity =
                     getCartQuantity(item.id);
 
+                  const imageSrc =
+                    failedImages[item.id] ||
+                    !item.image_url
+                      ? fallbackImage
+                      : item.image_url;
+
                   return (
                     <article
                       key={item.id}
@@ -369,19 +414,26 @@ export default function OrderClient() {
                     >
                       {/* IMAGE */}
                       <div className="relative aspect-[4/3] overflow-hidden bg-white/5">
-                        {item.image_url ? (
-                          <img
-                            src={item.image_url}
-                            alt={item.name}
-                            className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-white/[0.03] text-5xl text-white/15">
-                            🍽️
-                          </div>
-                        )}
+                        <Image
+                          src={imageSrc}
+                          alt={`${item.name} at ${restaurantName}`}
+                          fill
+                          sizes="(max-width: 640px) 100vw, 50vw"
+                          className="object-cover transition duration-700 group-hover:scale-105"
+                          unoptimized={
+                            Boolean(item.image_url) &&
+                            !failedImages[item.id]
+                          }
+                          loader={({ src }) => src}
+                          onError={() =>
+                            handleImageError(item.id)
+                          }
+                        />
 
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                        <div
+                          className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"
+                          aria-hidden="true"
+                        />
 
                         {item.is_featured && (
                           <span className="absolute left-4 top-4 rounded-full border border-[#c9a45c]/40 bg-black/70 px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-[#c9a45c] backdrop-blur">
@@ -434,7 +486,10 @@ export default function OrderClient() {
                                 −
                               </button>
 
-                              <span className="w-8 text-center text-sm">
+                              <span
+                                className="w-8 text-center text-sm"
+                                aria-live="polite"
+                              >
                                 {quantity}
                               </span>
 
@@ -493,14 +548,20 @@ export default function OrderClient() {
                   </h2>
                 </div>
 
-                <span className="flex h-9 min-w-9 items-center justify-center rounded-full bg-[#c9a45c] px-3 text-sm text-black">
+                <span
+                  className="flex h-9 min-w-9 items-center justify-center rounded-full bg-[#c9a45c] px-3 text-sm text-black"
+                  aria-label={`${itemCount} items in cart`}
+                >
                   {itemCount}
                 </span>
               </div>
 
               {cartItems.length === 0 ? (
                 <div className="py-14 text-center">
-                  <div className="text-4xl text-white/20">
+                  <div
+                    className="text-4xl text-white/20"
+                    aria-hidden="true"
+                  >
                     🛒
                   </div>
 
@@ -515,86 +576,105 @@ export default function OrderClient() {
               ) : (
                 <>
                   <div className="max-h-[380px] space-y-5 overflow-y-auto py-6">
-                    {cartItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex gap-4 border-b border-white/10 pb-5"
-                      >
-                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-white/[0.04]">
-                          {item.imageUrl ? (
-                            <img
-                              src={item.imageUrl}
-                              alt={item.name}
-                              className="h-full w-full object-cover"
+                    {cartItems.map((item) => {
+                      const cartImageSrc =
+                        failedImages[item.id] ||
+                        !item.imageUrl
+                          ? fallbackImage
+                          : item.imageUrl;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex gap-4 border-b border-white/10 pb-5"
+                        >
+                          <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-white/[0.04]">
+                            <Image
+                              src={cartImageSrc}
+                              alt={`${item.name} in cart`}
+                              fill
+                              sizes="64px"
+                              className="object-cover"
+                              unoptimized={
+                                Boolean(item.imageUrl) &&
+                                !failedImages[item.id]
+                              }
+                              loader={({ src }) => src}
+                              onError={() =>
+                                handleImageError(
+                                  item.id
+                                )
+                              }
                             />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-xl text-white/20">
-                              🍽️
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex justify-between gap-3">
+                              <h3 className="truncate text-sm">
+                                {item.name}
+                              </h3>
+
+                              <span className="text-sm text-[#c9a45c]">
+                                ₹
+                                {(
+                                  item.price *
+                                  item.quantity
+                                ).toLocaleString(
+                                  "en-IN"
+                                )}
+                              </span>
                             </div>
-                          )}
-                        </div>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex justify-between gap-3">
-                            <h3 className="truncate text-sm">
-                              {item.name}
-                            </h3>
+                            <div className="mt-3 flex w-fit items-center rounded-full border border-white/10">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated =
+                                    updateCartQuantity(
+                                      item.id,
+                                      item.quantity - 1
+                                    );
 
-                            <span className="text-sm text-[#c9a45c]">
-                              ₹
-                              {(
-                                item.price *
-                                item.quantity
-                              ).toLocaleString(
-                                "en-IN"
-                              )}
-                            </span>
-                          </div>
-
-                          <div className="mt-3 flex w-fit items-center rounded-full border border-white/10">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated =
-                                  updateCartQuantity(
-                                    item.id,
-                                    item.quantity - 1
+                                  setCartItems(
+                                    updated
                                   );
+                                }}
+                                className="flex h-7 w-7 items-center justify-center text-white/50 hover:text-white"
+                                aria-label={`Decrease ${item.name} quantity`}
+                              >
+                                −
+                              </button>
 
-                                setCartItems(
-                                  updated
-                                );
-                              }}
-                              className="flex h-7 w-7 items-center justify-center text-white/50 hover:text-white"
-                            >
-                              −
-                            </button>
+                              <span
+                                className="w-6 text-center text-xs"
+                                aria-live="polite"
+                              >
+                                {item.quantity}
+                              </span>
 
-                            <span className="w-6 text-center text-xs">
-                              {item.quantity}
-                            </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated =
+                                    updateCartQuantity(
+                                      item.id,
+                                      item.quantity + 1
+                                    );
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated =
-                                  updateCartQuantity(
-                                    item.id,
-                                    item.quantity + 1
+                                  setCartItems(
+                                    updated
                                   );
-
-                                setCartItems(
-                                  updated
-                                );
-                              }}
-                              className="flex h-7 w-7 items-center justify-center text-white/50 hover:text-white"
-                            >
-                              +
-                            </button>
+                                }}
+                                className="flex h-7 w-7 items-center justify-center text-white/50 hover:text-white"
+                                aria-label={`Increase ${item.name} quantity`}
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="space-y-3 border-t border-white/10 pt-5 text-sm">
@@ -666,10 +746,16 @@ export default function OrderClient() {
         <Link
           href="/order/cart"
           className="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 rounded-full bg-[#c9a45c] px-6 py-4 text-sm font-medium text-black shadow-2xl lg:hidden"
+          aria-label={`View cart with ${itemCount} ${
+            itemCount === 1 ? "item" : "items"
+          }`}
         >
           <span>View Cart</span>
 
-          <span className="h-5 w-px bg-black/20" />
+          <span
+            className="h-5 w-px bg-black/20"
+            aria-hidden="true"
+          />
 
           <span>
             {itemCount}{" "}

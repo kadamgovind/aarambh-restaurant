@@ -1,6 +1,25 @@
+import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
+
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+
+export const metadata: Metadata = {
+  title: "About Us | Our Story & Dining Philosophy",
+  description:
+    "Learn about Aarambh Restaurant in Narhe, Pune — a family-focused dining destination serving Indian, Maharashtrian, Chinese, North Indian and tandoor specialties.",
+  alternates: {
+    canonical: "/about",
+  },
+  openGraph: {
+    title: "About Aarambh Restaurant | Our Story & Values",
+    description:
+      "Discover the story, philosophy and values behind Aarambh Restaurant in Narhe, Pune.",
+    url: "/about",
+    type: "website",
+  },
+};
 
 const philosophy = [
   {
@@ -75,9 +94,7 @@ export default function AboutPage() {
             <h1 className="mt-6 text-5xl font-semibold leading-[0.95] tracking-[-0.06em] sm:text-6xl lg:text-8xl">
               A taste of
               <br />
-              <span className="text-white/45">
-                tradition & heart.
-              </span>
+              <span className="text-white/45">tradition &amp; heart.</span>
             </h1>
 
             <p className="mt-8 max-w-2xl text-base leading-8 text-white/60 sm:text-lg">
@@ -96,8 +113,6 @@ export default function AboutPage() {
       <section className="border-b border-white/10 bg-[#0a0a0a]">
         <div className="mx-auto max-w-7xl px-5 py-24 sm:px-6 sm:py-32 lg:px-8">
           <div className="grid items-center gap-14 lg:grid-cols-2 lg:gap-20">
-            {/* Content */}
-
             <div>
               <p className="text-[10px] font-medium uppercase tracking-[0.35em] text-[#c9a45c] sm:text-xs">
                 Our Beginning
@@ -106,13 +121,11 @@ export default function AboutPage() {
               <h2 className="mt-5 text-4xl font-semibold leading-tight tracking-[-0.04em] sm:text-5xl">
                 A Taste of Tradition.
                 <br />
-                <span className="text-white/45">
-                  Served With Heart.
-                </span>
+                <span className="text-white/45">Served With Heart.</span>
               </h2>
 
               <p className="mt-7 max-w-xl text-base leading-8 text-white/60">
-                Aarambh Family Restaurant & Kitchen is a family-focused
+                Aarambh Family Restaurant &amp; Kitchen is a family-focused
                 dining destination in Narhe, Pune. Our menu brings together
                 traditional Indian flavours, Maharashtrian favourites,
                 popular Chinese dishes and tandoor specialties.
@@ -131,14 +144,13 @@ export default function AboutPage() {
               </p>
             </div>
 
-            {/* Image */}
-
             <div className="group relative aspect-[4/5] overflow-hidden rounded-2xl border border-white/10 bg-[#111]">
-              <img
+              <Image
                 src="/images/restaurant-story.png"
                 alt="Aarambh Restaurant dining experience"
-                loading="lazy"
-                className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+                fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
               />
 
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
@@ -170,9 +182,7 @@ export default function AboutPage() {
           <h2 className="mt-6 text-4xl font-semibold leading-tight tracking-[-0.05em] sm:text-5xl lg:text-7xl">
             Great food is
             <br />
-            <span className="text-white/40">
-              meant to be shared.
-            </span>
+            <span className="text-white/40">meant to be shared.</span>
           </h2>
 
           <p className="mx-auto mt-8 max-w-2xl text-base leading-8 text-white/50 sm:text-lg">
@@ -190,8 +200,6 @@ export default function AboutPage() {
       <section className="border-b border-white/10 bg-[#0a0a0a]">
         <div className="mx-auto max-w-7xl px-5 py-24 sm:px-6 sm:py-32 lg:px-8">
           <div className="grid gap-14 lg:grid-cols-3 lg:gap-20">
-            {/* Heading */}
-
             <div>
               <p className="text-[10px] font-medium uppercase tracking-[0.35em] text-[#c9a45c] sm:text-xs">
                 Our Philosophy
@@ -200,9 +208,7 @@ export default function AboutPage() {
               <h2 className="mt-5 text-4xl font-semibold leading-tight tracking-[-0.04em] sm:text-5xl">
                 Crafted With
                 <br />
-                <span className="text-white/45">
-                  Heart.
-                </span>
+                <span className="text-white/45">Heart.</span>
               </h2>
 
               <p className="mt-6 max-w-sm text-sm leading-7 text-white/40">
@@ -211,8 +217,6 @@ export default function AboutPage() {
                 experience warm, thoughtful and enjoyable.
               </p>
             </div>
-
-            {/* Philosophy Grid */}
 
             <div className="grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:col-span-2">
               {philosophy.map((item) => (
@@ -254,9 +258,7 @@ export default function AboutPage() {
             <h2 className="mt-5 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
               The values behind
               <br />
-              <span className="text-white/45">
-                every experience.
-              </span>
+              <span className="text-white/45">every experience.</span>
             </h2>
           </div>
 
@@ -270,9 +272,7 @@ export default function AboutPage() {
                   {value.number}
                 </p>
 
-                <h3 className="mt-6 text-xl font-medium">
-                  {value.title}
-                </h3>
+                <h3 className="mt-6 text-xl font-medium">{value.title}</h3>
 
                 <p className="mt-4 text-sm leading-7 text-white/45">
                   {value.description}
@@ -298,9 +298,7 @@ export default function AboutPage() {
               <h2 className="mt-5 max-w-2xl text-4xl font-semibold leading-tight tracking-[-0.05em] sm:text-5xl lg:text-6xl">
                 From our kitchen
                 <br />
-                <span className="text-white/45">
-                  to your table.
-                </span>
+                <span className="text-white/45">to your table.</span>
               </h2>
             </div>
 

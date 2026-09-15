@@ -1,21 +1,24 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import RestaurantSchema from "@/components/RestaurantSchema";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+const siteName = "Aarambh Restaurant";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
 
   title: {
-    default: "Aarambh Restaurant",
-    template: "%s | Aarambh Restaurant",
+    default: siteName,
+    template: `%s | ${siteName}`,
   },
 
   description:
     "Aarambh Restaurant offers delicious food, memorable dining, table reservations, and convenient online ordering.",
 
-  applicationName: "Aarambh Restaurant",
+  applicationName: siteName,
 
   keywords: [
     "Aarambh Restaurant",
@@ -31,32 +34,41 @@ export const metadata: Metadata = {
 
   authors: [
     {
-      name: "Aarambh Restaurant",
+      name: siteName,
     },
   ],
 
-  creator: "Aarambh Restaurant",
-  publisher: "Aarambh Restaurant",
+  creator: siteName,
+  publisher: siteName,
 
   alternates: {
     canonical: "/",
   },
 
   openGraph: {
-    title: "Aarambh Restaurant",
+    title: siteName,
     description:
       "Delicious food, memorable dining, table reservations, and online ordering at Aarambh Restaurant.",
-    siteName: "Aarambh Restaurant",
+    siteName,
     url: siteUrl,
     locale: "en_IN",
     type: "website",
+    images: [
+      {
+        url: "/images/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Aarambh Restaurant",
+      },
+    ],
   },
 
   twitter: {
     card: "summary_large_image",
-    title: "Aarambh Restaurant",
+    title: siteName,
     description:
       "Delicious food, memorable dining, table reservations, and online ordering at Aarambh Restaurant.",
+    images: ["/images/og-image.jpg"],
   },
 
   robots: {
@@ -70,6 +82,19 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
+
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0a0a0a",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({
@@ -79,7 +104,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en-IN">
-      <body>{children}</body>
+      <body>
+        <RestaurantSchema />
+        {children}
+      </body>
     </html>
   );
 }

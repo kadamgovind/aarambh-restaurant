@@ -13,7 +13,16 @@ import {
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
-const searchData = [
+type SearchItem = {
+  title: string;
+  description: string;
+  category: string;
+  href: string;
+  icon: typeof Utensils;
+  keywords: string;
+};
+
+const searchData: SearchItem[] = [
   {
     title: "Paneer Tikka",
     description:
@@ -151,36 +160,46 @@ const searchData = [
   },
 ];
 
+const suggestions = [
+  "Paneer",
+  "Chicken",
+  "Biryani",
+  "Desserts",
+  "Booking",
+  "Reviews",
+];
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
 
-  const results = useMemo(() => {
-    const search = query.trim().toLowerCase();
+  const normalizedQuery = query.trim().toLowerCase();
 
-    if (!search) {
+  const results = useMemo(() => {
+    if (!normalizedQuery) {
       return [];
     }
 
     return searchData.filter((item) => {
-      const searchableText = `
-        ${item.title}
-        ${item.description}
-        ${item.category}
-        ${item.keywords}
-      `.toLowerCase();
+      const searchableText = [
+        item.title,
+        item.description,
+        item.category,
+        item.keywords,
+      ]
+        .join(" ")
+        .toLowerCase();
 
-      return searchableText.includes(search);
+      return searchableText.includes(normalizedQuery);
     });
-  }, [query]);
+  }, [normalizedQuery]);
+
+  const hasQuery = normalizedQuery.length > 0;
 
   return (
     <main className="min-h-screen bg-black text-white">
       <Navbar />
 
-      {/* =====================================================
-          HERO
-      ===================================================== */}
-
+      {/* Hero */}
       <section className="border-b border-white/10 pt-32">
         <div className="mx-auto max-w-5xl px-6 pb-20 text-center lg:px-8">
           <p className="text-xs uppercase tracking-[0.4em] text-[#c9a45c]">
@@ -200,32 +219,32 @@ export default function SearchPage() {
             and find everything you need for your next visit.
           </p>
 
-          {/* SEARCH BOX */}
-
+          {/* Search */}
           <div className="relative mx-auto mt-12 max-w-2xl">
-            <Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#c9a45c]" />
+            <Search
+              aria-hidden="true"
+              className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#c9a45c]"
+            />
+
+            <label htmlFor="site-search" className="sr-only">
+              Search Aarambh
+            </label>
 
             <input
+              id="site-search"
               type="search"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(event) => setQuery(event.target.value)}
               placeholder="Search dishes, menu, reservations..."
+              autoComplete="off"
+              spellCheck={false}
               className="h-16 w-full border border-white/15 bg-white/[0.03] pl-14 pr-6 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c]"
-              autoFocus
             />
           </div>
 
-          {/* SEARCH SUGGESTIONS */}
-
+          {/* Suggestions */}
           <div className="mt-5 flex flex-wrap justify-center gap-2">
-            {[
-              "Paneer",
-              "Chicken",
-              "Biryani",
-              "Desserts",
-              "Booking",
-              "Reviews",
-            ].map((suggestion) => (
+            {suggestions.map((suggestion) => (
               <button
                 key={suggestion}
                 type="button"
@@ -239,12 +258,9 @@ export default function SearchPage() {
         </div>
       </section>
 
-      {/* =====================================================
-          SEARCH RESULTS
-      ===================================================== */}
-
+      {/* Search Results */}
       <section className="mx-auto max-w-5xl px-6 py-16 lg:px-8">
-        {!query.trim() ? (
+        {!hasQuery ? (
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-white/30">
               Explore
@@ -255,13 +271,14 @@ export default function SearchPage() {
             </h2>
 
             <div className="mt-8 grid gap-px border border-white/10 bg-white/10 sm:grid-cols-2">
-              {/* MENU */}
-
               <Link
                 href="/menu"
                 className="group bg-black p-8 transition hover:bg-white/[0.03]"
               >
-                <Utensils className="h-5 w-5 text-[#c9a45c]" />
+                <Utensils
+                  aria-hidden="true"
+                  className="h-5 w-5 text-[#c9a45c]"
+                />
 
                 <h3 className="mt-6 text-xl font-light">
                   Explore the Menu
@@ -274,17 +291,21 @@ export default function SearchPage() {
 
                 <span className="mt-6 inline-flex items-center gap-2 text-xs text-[#c9a45c]">
                   View Menu
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                  <ArrowRight
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1"
+                  />
                 </span>
               </Link>
-
-              {/* BOOKING */}
 
               <Link
                 href="/booking"
                 className="group bg-black p-8 transition hover:bg-white/[0.03]"
               >
-                <CalendarDays className="h-5 w-5 text-[#c9a45c]" />
+                <CalendarDays
+                  aria-hidden="true"
+                  className="h-5 w-5 text-[#c9a45c]"
+                />
 
                 <h3 className="mt-6 text-xl font-light">
                   Reserve Your Table
@@ -297,17 +318,21 @@ export default function SearchPage() {
 
                 <span className="mt-6 inline-flex items-center gap-2 text-xs text-[#c9a45c]">
                   Book a Table
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                  <ArrowRight
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1"
+                  />
                 </span>
               </Link>
-
-              {/* ORDER */}
 
               <Link
                 href="/order"
                 className="group bg-black p-8 transition hover:bg-white/[0.03]"
               >
-                <Utensils className="h-5 w-5 text-[#c9a45c]" />
+                <Utensils
+                  aria-hidden="true"
+                  className="h-5 w-5 text-[#c9a45c]"
+                />
 
                 <h3 className="mt-6 text-xl font-light">
                   Order Online
@@ -320,17 +345,21 @@ export default function SearchPage() {
 
                 <span className="mt-6 inline-flex items-center gap-2 text-xs text-[#c9a45c]">
                   Start Order
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                  <ArrowRight
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1"
+                  />
                 </span>
               </Link>
-
-              {/* REVIEWS */}
 
               <Link
                 href="/reviews"
                 className="group bg-black p-8 transition hover:bg-white/[0.03]"
               >
-                <Star className="h-5 w-5 text-[#c9a45c]" />
+                <Star
+                  aria-hidden="true"
+                  className="h-5 w-5 text-[#c9a45c]"
+                />
 
                 <h3 className="mt-6 text-xl font-light">
                   Guest Reviews
@@ -343,15 +372,17 @@ export default function SearchPage() {
 
                 <span className="mt-6 inline-flex items-center gap-2 text-xs text-[#c9a45c]">
                   Read Reviews
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                  <ArrowRight
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1"
+                  />
                 </span>
               </Link>
             </div>
           </div>
         ) : (
           <div>
-            {/* RESULTS HEADER */}
-
+            {/* Results Header */}
             <div className="mb-8 flex items-end justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.3em] text-white/30">
@@ -367,13 +398,18 @@ export default function SearchPage() {
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                className="text-xs text-white/40 transition hover:text-[#c9a45c]"
+                className="shrink-0 text-xs text-white/40 transition hover:text-[#c9a45c]"
               >
                 Clear search
               </button>
             </div>
 
-            {/* RESULTS */}
+            {/* Live result status for screen readers */}
+            <p className="sr-only" aria-live="polite">
+              {results.length}{" "}
+              {results.length === 1 ? "result" : "results"} found
+              for {query}.
+            </p>
 
             {results.length > 0 ? (
               <div className="divide-y divide-white/10 border-y border-white/10">
@@ -387,7 +423,10 @@ export default function SearchPage() {
                       className="group flex gap-5 py-7 transition hover:bg-white/[0.02]"
                     >
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-white/10 bg-white/[0.02]">
-                        <Icon className="h-4 w-4 text-[#c9a45c]" />
+                        <Icon
+                          aria-hidden="true"
+                          className="h-4 w-4 text-[#c9a45c]"
+                        />
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -406,16 +445,20 @@ export default function SearchPage() {
                         </p>
                       </div>
 
-                      <ArrowRight className="mt-2 h-4 w-4 shrink-0 text-white/20 transition group-hover:translate-x-1 group-hover:text-[#c9a45c]" />
+                      <ArrowRight
+                        aria-hidden="true"
+                        className="mt-2 h-4 w-4 shrink-0 text-white/20 transition group-hover:translate-x-1 group-hover:text-[#c9a45c]"
+                      />
                     </Link>
                   );
                 })}
               </div>
             ) : (
-              /* NO RESULTS */
-
               <div className="border border-white/10 bg-white/[0.02] px-6 py-16 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/10">
+                <div
+                  aria-hidden="true"
+                  className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/10"
+                >
                   <Search className="h-5 w-5 text-white/30" />
                 </div>
 
@@ -442,10 +485,7 @@ export default function SearchPage() {
         )}
       </section>
 
-      {/* =====================================================
-          SEARCH CTA
-      ===================================================== */}
-
+      {/* Search CTA */}
       <section className="border-y border-white/10">
         <div className="mx-auto max-w-5xl px-6 py-20 text-center lg:px-8">
           <p className="text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
@@ -463,7 +503,7 @@ export default function SearchPage() {
             className="mt-8 inline-flex items-center gap-3 bg-[#c9a45c] px-7 py-4 text-sm font-medium text-black transition hover:bg-[#dfbd78]"
           >
             Book Your Table
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight aria-hidden="true" className="h-4 w-4" />
           </Link>
         </div>
       </section>

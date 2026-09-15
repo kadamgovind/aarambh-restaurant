@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -15,9 +16,15 @@ import {
   type CartItem,
 } from "@/lib/cart";
 
+const fallbackImage = "/images/signature-dish.png";
+
 export default function CartClient() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [loaded, setLoaded] = useState(false);
+
+  const [failedImages, setFailedImages] = useState<
+    Record<string, boolean>
+  >({});
 
   useEffect(() => {
     function loadCart() {
@@ -31,10 +38,16 @@ export default function CartClient() {
       setItems(getCartItems());
     }
 
-    window.addEventListener("cart-updated", handleCartUpdate);
+    window.addEventListener(
+      "cart-updated",
+      handleCartUpdate
+    );
 
     return () => {
-      window.removeEventListener("cart-updated", handleCartUpdate);
+      window.removeEventListener(
+        "cart-updated",
+        handleCartUpdate
+      );
     };
   }, []);
 
@@ -89,13 +102,30 @@ export default function CartClient() {
     setItems([]);
   }
 
+  function handleImageError(itemId: string) {
+    setFailedImages((current) => {
+      if (current[itemId]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [itemId]: true,
+      };
+    });
+  }
+
   if (!loaded) {
     return (
       <>
         <Navbar />
 
         <section className="flex min-h-[70vh] items-center justify-center px-6 pt-24">
-          <p className="text-sm text-white/40">
+          <p
+            className="text-sm text-white/40"
+            role="status"
+            aria-live="polite"
+          >
             Loading your cart...
           </p>
         </section>
@@ -110,7 +140,10 @@ export default function CartClient() {
 
         <section className="flex min-h-[75vh] items-center justify-center px-6 pt-24">
           <div className="w-full max-w-2xl text-center">
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-4xl">
+            <div
+              className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-4xl"
+              aria-hidden="true"
+            >
               🛒
             </div>
 
@@ -166,6 +199,7 @@ export default function CartClient() {
               type="button"
               onClick={handleClearCart}
               className="w-fit text-sm text-white/35 underline-offset-4 transition hover:text-red-400 hover:underline"
+              aria-label="Clear all items from cart"
             >
               Clear Cart
             </button>
@@ -176,120 +210,140 @@ export default function CartClient() {
       <section className="px-6 py-16 lg:px-8 lg:py-20">
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[1fr_380px]">
           <div>
-            <div className="space-y-5">
-              {items.map((item) => (
-                <article
-                  key={item.id}
-                  className="rounded-3xl border border-white/10 bg-white/[0.025] p-5 sm:p-6"
-                >
-                  <div className="flex gap-5">
-                    <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-white/[0.04] sm:h-36 sm:w-36">
-                      {item.imageUrl ? (
-                        <img
-                          src={item.imageUrl}
-                          alt={item.name}
-                          className="h-full w-full object-cover"
+            <div
+              className="space-y-5"
+              aria-label="Cart items"
+            >
+              {items.map((item) => {
+                const imageSrc =
+                  failedImages[item.id] ||
+                  !item.imageUrl
+                    ? fallbackImage
+                    : item.imageUrl;
+
+                return (
+                  <article
+                    key={item.id}
+                    className="rounded-3xl border border-white/10 bg-white/[0.025] p-5 sm:p-6"
+                  >
+                    <div className="flex gap-5">
+                      <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-white/[0.04] sm:h-36 sm:w-36">
+                        <Image
+                          src={imageSrc}
+                          alt={`${item.name} at Aarambh Restaurant`}
+                          fill
+                          sizes="(max-width: 640px) 112px, 144px"
+                          className="object-cover"
+                          unoptimized={
+                            Boolean(item.imageUrl) &&
+                            !failedImages[item.id]
+                          }
+                          loader={({ src }) => src}
+                          onError={() =>
+                            handleImageError(item.id)
+                          }
                         />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-2xl text-white/20">
-                          🍽️
-                        </div>
-                      )}
-                    </div>
+                      </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`h-2 w-2 rounded-full ${
-                                item.itemType === "veg"
-                                  ? "bg-green-500"
-                                  : "bg-red-500"
-                              }`}
-                            />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`h-2 w-2 rounded-full ${
+                                  item.itemType === "veg"
+                                    ? "bg-green-500"
+                                    : "bg-red-500"
+                                }`}
+                                aria-hidden="true"
+                              />
 
-                            <p className="text-xs uppercase tracking-[0.18em] text-white/30">
-                              {item.itemType === "veg"
-                                ? "Veg"
-                                : "Non-Veg"}
-                            </p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-white/30">
+                                {item.itemType === "veg"
+                                  ? "Veg"
+                                  : "Non-Veg"}
+                              </p>
+                            </div>
+
+                            <h2 className="mt-2 text-lg font-medium sm:text-xl">
+                              {item.name}
+                            </h2>
                           </div>
 
-                          <h2 className="mt-2 text-lg font-medium sm:text-xl">
-                            {item.name}
-                          </h2>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleRemove(item.id)
-                          }
-                          className="text-xl text-white/25 transition hover:text-red-400"
-                          aria-label={`Remove ${item.name}`}
-                        >
-                          ×
-                        </button>
-                      </div>
-
-                      <div className="mt-5 flex items-center justify-between gap-4">
-                        <div className="flex items-center rounded-full border border-white/10">
                           <button
                             type="button"
                             onClick={() =>
-                              handleDecrease(item)
+                              handleRemove(item.id)
                             }
-                            className="flex h-9 w-9 items-center justify-center text-white/50 transition hover:text-white"
-                            aria-label={`Decrease ${item.name} quantity`}
+                            className="text-xl text-white/25 transition hover:text-red-400"
+                            aria-label={`Remove ${item.name} from cart`}
                           >
-                            −
-                          </button>
-
-                          <span className="w-8 text-center text-sm">
-                            {item.quantity}
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleIncrease(item)
-                            }
-                            className="flex h-9 w-9 items-center justify-center text-white/50 transition hover:text-white"
-                            aria-label={`Increase ${item.name} quantity`}
-                          >
-                            +
+                            ×
                           </button>
                         </div>
 
-                        <div className="text-right">
-                          <p className="text-xs text-white/30">
-                            ₹
-                            {item.price.toLocaleString(
-                              "en-IN"
-                            )}{" "}
-                            × {item.quantity}
-                          </p>
+                        <div className="mt-5 flex items-center justify-between gap-4">
+                          <div className="flex items-center rounded-full border border-white/10">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDecrease(item)
+                              }
+                              className="flex h-9 w-9 items-center justify-center text-white/50 transition hover:text-white"
+                              aria-label={`Decrease ${item.name} quantity`}
+                            >
+                              −
+                            </button>
 
-                          <p className="mt-1 text-lg text-[#c9a45c]">
-                            ₹
-                            {(
-                              item.price * item.quantity
-                            ).toLocaleString("en-IN")}
-                          </p>
+                            <span
+                              className="w-8 text-center text-sm"
+                              aria-live="polite"
+                            >
+                              {item.quantity}
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleIncrease(item)
+                              }
+                              className="flex h-9 w-9 items-center justify-center text-white/50 transition hover:text-white"
+                              aria-label={`Increase ${item.name} quantity`}
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="text-xs text-white/30">
+                              ₹
+                              {item.price.toLocaleString(
+                                "en-IN"
+                              )}{" "}
+                              × {item.quantity}
+                            </p>
+
+                            <p className="mt-1 text-lg text-[#c9a45c]">
+                              ₹
+                              {(
+                                item.price *
+                                item.quantity
+                              ).toLocaleString("en-IN")}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
 
             <Link
               href="/order"
               className="mt-8 inline-flex items-center gap-3 text-sm text-white/45 transition hover:text-[#c9a45c]"
             >
-              <span>←</span>
+              <span aria-hidden="true">←</span>
               Continue Shopping
             </Link>
           </div>

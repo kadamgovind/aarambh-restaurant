@@ -6,6 +6,75 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { supabase } from "@/lib/supabase";
 
+const TIME_OPTIONS = [
+  "12:00 PM",
+  "12:30 PM",
+  "1:00 PM",
+  "1:30 PM",
+  "2:00 PM",
+  "2:30 PM",
+  "7:00 PM",
+  "7:30 PM",
+  "8:00 PM",
+  "8:30 PM",
+  "9:00 PM",
+  "9:30 PM",
+  "10:00 PM",
+];
+
+const MAX_GUESTS = 10;
+const MAX_NAME_LENGTH = 100;
+const MAX_PHONE_LENGTH = 20;
+const MAX_REQUEST_LENGTH = 500;
+
+function getTodayDate() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function convertTo24Hour(time: string) {
+  const [timePart, modifier] = time.trim().split(" ");
+
+  if (!timePart || !modifier) {
+    return null;
+  }
+
+  const [hoursString, minutesString] = timePart.split(":");
+  const hoursValue = Number(hoursString);
+  const minutesValue = Number(minutesString);
+
+  if (
+    !Number.isInteger(hoursValue) ||
+    !Number.isInteger(minutesValue) ||
+    hoursValue < 1 ||
+    hoursValue > 12 ||
+    minutesValue < 0 ||
+    minutesValue > 59 ||
+    !["AM", "PM"].includes(modifier)
+  ) {
+    return null;
+  }
+
+  let hours = hoursValue;
+
+  if (modifier === "PM" && hours !== 12) {
+    hours += 12;
+  }
+
+  if (modifier === "AM" && hours === 12) {
+    hours = 0;
+  }
+
+  return `${String(hours).padStart(2, "0")}:${String(
+    minutesValue
+  ).padStart(2, "0")}:00`;
+}
+
+function isValidPhone(phone: string) {
+  const normalizedPhone = phone.replace(/[\s()-]/g, "");
+
+  return /^\+?\d{10,15}$/.test(normalizedPhone);
+}
+
 export default function BookingPage() {
   const router = useRouter();
 
@@ -19,58 +88,144 @@ export default function BookingPage() {
   const [defaultPhone, setDefaultPhone] = useState("");
 
   useEffect(() => {
+    let mounted = true;
+
     async function loadUser() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
 
-      if (!user) {
-        router.push("/login");
-        return;
+        if (userError) {
+          console.error("User loading error:", userError);
+        }
+
+        if (!mounted) {
+          return;
+        }
+
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
+
+        setUserId(user.id);
+
+        const { data: profile, error: profileError } =
+          await supabase
+            .from("profiles")
+            .select("full_name, phone")
+            .eq("id", user.id)
+            .maybeSingle();
+
+        if (profileError) {
+          console.error("Profile loading error:", profileError);
+        }
+
+        if (!mounted) {
+          return;
+        }
+
+        if (profile) {
+          setDefaultName(profile.full_name || "");
+          setDefaultPhone(profile.phone || "");
+        }
+
+        setCheckingUser(false);
+      } catch (err) {
+        console.error("Account loading error:", err);
+
+        if (!mounted) {
+          return;
+        }
+
+        setError("Unable to load your account. Please try again.");
+        setCheckingUser(false);
       }
-
-      setUserId(user.id);
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name, phone")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profile) {
-        setDefaultName(profile.full_name || "");
-        setDefaultPhone(profile.phone || "");
-      }
-
-      setCheckingUser(false);
     }
 
     void loadUser();
+
+    return () => {
+      mounted = false;
+    };
   }, [router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (loading) {
+      return;
+    }
+
     setLoading(true);
     setError("");
 
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
 
-    const date = String(formData.get("date") || "");
-    const time = String(formData.get("time") || "");
+    const date = String(formData.get("date") || "").trim();
+    const time = String(formData.get("time") || "").trim();
     const guests = Number(formData.get("guests") || 0);
     const name = String(formData.get("name") || "").trim();
     const phone = String(formData.get("phone") || "").trim();
     const request = String(formData.get("request") || "").trim();
 
     if (!userId) {
-      setError("Please login before making a reservation.");
+      setError("Please log in before making a reservation.");
       setLoading(false);
       return;
     }
 
-    if (!date || !time || !guests || !name || !phone) {
+    if (!date || !time || !name || !phone) {
       setError("Please fill in all required fields.");
+      setLoading(false);
+      return;
+    }
+
+    if (date < getTodayDate()) {
+      setError("Please select today or a future date.");
+      setLoading(false);
+      return;
+    }
+
+    if (
+      !Number.isInteger(guests) ||
+      guests < 1 ||
+      guests > MAX_GUESTS
+    ) {
+      setError(`Please select between 1 and ${MAX_GUESTS} guests.`);
+      setLoading(false);
+      return;
+    }
+
+    if (name.length < 2 || name.length > MAX_NAME_LENGTH) {
+      setError(
+        `Name must be between 2 and ${MAX_NAME_LENGTH} characters.`
+      );
+      setLoading(false);
+      return;
+    }
+
+    if (phone.length > MAX_PHONE_LENGTH || !isValidPhone(phone)) {
+      setError("Please enter a valid phone number.");
+      setLoading(false);
+      return;
+    }
+
+    if (request.length > MAX_REQUEST_LENGTH) {
+      setError(
+        `Special request must be ${MAX_REQUEST_LENGTH} characters or less.`
+      );
+      setLoading(false);
+      return;
+    }
+
+    const reservationTime = convertTo24Hour(time);
+
+    if (!reservationTime) {
+      setError("Please select a valid reservation time.");
       setLoading(false);
       return;
     }
@@ -86,19 +241,25 @@ export default function BookingPage() {
         .maybeSingle();
 
       if (restaurantError) {
-        console.error("Restaurant loading error:", restaurantError);
-        setError("Unable to load restaurant information.");
+        console.error(
+          "Restaurant loading error:",
+          restaurantError
+        );
+
+        setError(
+          "We could not load the restaurant information. Please try again."
+        );
         setLoading(false);
         return;
       }
 
-      if (!restaurant) {
-        setError("Restaurant information was not found.");
+      if (!restaurant?.id) {
+        setError(
+          "Restaurant information is currently unavailable."
+        );
         setLoading(false);
         return;
       }
-
-      const reservationTime = convertTo24Hour(time);
 
       const { error: reservationError } = await supabase
         .from("reservations")
@@ -120,43 +281,24 @@ export default function BookingPage() {
         );
 
         setError(
-          reservationError.message ||
-            "Unable to create reservation."
+          "We could not submit your reservation. Please try again."
         );
-
         setLoading(false);
         return;
       }
 
+      form.reset();
+
       setSubmitted(true);
       setLoading(false);
-
-      event.currentTarget.reset();
     } catch (err) {
       console.error("Booking error:", err);
-      setError("Something went wrong. Please try again.");
+
+      setError(
+        "Something went wrong while submitting your reservation."
+      );
       setLoading(false);
     }
-  }
-
-  function convertTo24Hour(time: string) {
-    const [timePart, modifier] = time.split(" ");
-    const [hoursValue, minutes] = timePart.split(":").map(Number);
-
-    let hours = hoursValue;
-
-    if (modifier === "PM" && hours !== 12) {
-      hours += 12;
-    }
-
-    if (modifier === "AM" && hours === 12) {
-      hours = 0;
-    }
-
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
-      2,
-      "0"
-    )}:00`;
   }
 
   if (checkingUser) {
@@ -193,9 +335,9 @@ export default function BookingPage() {
             </h1>
 
             <p className="mt-8 max-w-2xl text-base leading-8 text-white/60 sm:text-lg">
-              Reserve your table at AURA and enjoy an evening of
-              exceptional Indian cuisine, thoughtful hospitality and
-              unforgettable moments.
+              Reserve your table at Aarambh and enjoy an evening of
+              exceptional Indian cuisine, thoughtful hospitality
+              and unforgettable moments.
             </p>
           </div>
         </div>
@@ -207,7 +349,10 @@ export default function BookingPage() {
             <div className="rounded-2xl border border-white/10 bg-black p-6 sm:p-8 lg:p-10">
               {submitted ? (
                 <div className="flex min-h-[500px] flex-col items-center justify-center text-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[#c9a45c]/40">
+                  <div
+                    className="flex h-16 w-16 items-center justify-center rounded-full border border-[#c9a45c]/40"
+                    aria-hidden="true"
+                  >
                     <span className="text-2xl text-[#c9a45c]">
                       ✓
                     </span>
@@ -229,7 +374,10 @@ export default function BookingPage() {
 
                   <button
                     type="button"
-                    onClick={() => setSubmitted(false)}
+                    onClick={() => {
+                      setSubmitted(false);
+                      setError("");
+                    }}
                     className="mt-8 rounded-full border border-white/20 px-6 py-3 text-sm text-white transition hover:border-[#c9a45c] hover:text-[#c9a45c]"
                   >
                     Make Another Reservation
@@ -270,9 +418,7 @@ export default function BookingPage() {
                           name="date"
                           type="date"
                           required
-                          min={new Date()
-                            .toISOString()
-                            .split("T")[0]}
+                          min={getTodayDate()}
                           className="mt-3 w-full rounded-xl border border-white/10 bg-[#0a0a0a] px-4 py-3.5 text-sm text-white outline-none transition focus:border-[#c9a45c]"
                         />
                       </div>
@@ -296,20 +442,11 @@ export default function BookingPage() {
                             Select time
                           </option>
 
-                          <option value="12:00 PM">12:00 PM</option>
-                          <option value="12:30 PM">12:30 PM</option>
-                          <option value="1:00 PM">1:00 PM</option>
-                          <option value="1:30 PM">1:30 PM</option>
-                          <option value="2:00 PM">2:00 PM</option>
-                          <option value="2:30 PM">2:30 PM</option>
-
-                          <option value="7:00 PM">7:00 PM</option>
-                          <option value="7:30 PM">7:30 PM</option>
-                          <option value="8:00 PM">8:00 PM</option>
-                          <option value="8:30 PM">8:30 PM</option>
-                          <option value="9:00 PM">9:00 PM</option>
-                          <option value="9:30 PM">9:30 PM</option>
-                          <option value="10:00 PM">10:00 PM</option>
+                          {TIME_OPTIONS.map((time) => (
+                            <option key={time} value={time}>
+                              {time}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -330,17 +467,12 @@ export default function BookingPage() {
                         className="mt-3 w-full rounded-xl border border-white/10 bg-[#0a0a0a] px-4 py-3.5 text-sm text-white outline-none transition focus:border-[#c9a45c]"
                       >
                         {Array.from(
-                          { length: 10 },
+                          { length: MAX_GUESTS },
                           (_, index) => index + 1
                         ).map((guest) => (
-                          <option
-                            key={guest}
-                            value={guest}
-                          >
+                          <option key={guest} value={guest}>
                             {guest}{" "}
-                            {guest === 1
-                              ? "Guest"
-                              : "Guests"}
+                            {guest === 1 ? "Guest" : "Guests"}
                           </option>
                         ))}
                       </select>
@@ -359,8 +491,10 @@ export default function BookingPage() {
                         name="name"
                         type="text"
                         required
+                        maxLength={MAX_NAME_LENGTH}
                         defaultValue={defaultName}
                         placeholder="Your name"
+                        autoComplete="name"
                         className="mt-3 w-full rounded-xl border border-white/10 bg-[#0a0a0a] px-4 py-3.5 text-sm text-white placeholder:text-white/20 outline-none transition focus:border-[#c9a45c]"
                       />
                     </div>
@@ -378,8 +512,11 @@ export default function BookingPage() {
                         name="phone"
                         type="tel"
                         required
+                        maxLength={MAX_PHONE_LENGTH}
                         defaultValue={defaultPhone}
                         placeholder="+91 XXXXX XXXXX"
+                        autoComplete="tel"
+                        inputMode="tel"
                         className="mt-3 w-full rounded-xl border border-white/10 bg-[#0a0a0a] px-4 py-3.5 text-sm text-white placeholder:text-white/20 outline-none transition focus:border-[#c9a45c]"
                       />
                     </div>
@@ -396,13 +533,17 @@ export default function BookingPage() {
                         id="request"
                         name="request"
                         rows={4}
+                        maxLength={MAX_REQUEST_LENGTH}
                         placeholder="Birthday, anniversary, dietary requirements..."
                         className="mt-3 w-full resize-none rounded-xl border border-white/10 bg-[#0a0a0a] px-4 py-3.5 text-sm text-white placeholder:text-white/20 outline-none transition focus:border-[#c9a45c]"
                       />
                     </div>
 
                     {error && (
-                      <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
+                      <div
+                        role="alert"
+                        className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400"
+                      >
                         {error}
                       </div>
                     )}
@@ -419,7 +560,8 @@ export default function BookingPage() {
 
                     <p className="text-center text-xs leading-6 text-white/30">
                       Your reservation is subject to availability.
-                      AURA will contact you to confirm your booking.
+                      Aarambh will contact you to confirm your
+                      booking.
                     </p>
                   </form>
                 </>
@@ -428,7 +570,7 @@ export default function BookingPage() {
 
             <aside className="lg:pt-10">
               <p className="text-xs uppercase tracking-[0.3em] text-[#c9a45c]">
-                Visit AURA
+                Visit Aarambh
               </p>
 
               <h2 className="mt-5 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
@@ -444,9 +586,8 @@ export default function BookingPage() {
                   </p>
 
                   <p className="mt-3 text-sm leading-7 text-white/60">
-                    24 Heritage Avenue
-                    <br />
-                    Mumbai, Maharashtra
+                    Please check our Contact page for the current
+                    restaurant address.
                   </p>
                 </div>
 
@@ -456,9 +597,8 @@ export default function BookingPage() {
                   </p>
 
                   <p className="mt-3 text-sm leading-7 text-white/60">
-                    Monday – Sunday
-                    <br />
-                    12:00 PM – 11:30 PM
+                    Reservations are subject to restaurant
+                    availability.
                   </p>
                 </div>
 
@@ -468,9 +608,8 @@ export default function BookingPage() {
                   </p>
 
                   <p className="mt-3 text-sm leading-7 text-white/60">
-                    +91 98765 43210
-                    <br />
-                    hello@aura-restaurant.com
+                    Our team will contact you using the phone
+                    number provided with your reservation.
                   </p>
                 </div>
               </div>

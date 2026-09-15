@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,14 +13,17 @@ export default function RegisterPage() {
   const router = useRouter();
 
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] =
+    useState(false);
 
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const [error, setError] = useState("");
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
 
     setError("");
@@ -42,9 +46,9 @@ export default function RegisterPage() {
 
     const termsAccepted = form.get("terms") === "on";
 
-    // -----------------------------
+    // ==========================================================
     // VALIDATION
-    // -----------------------------
+    // ==========================================================
 
     if (!name) {
       setError("Please enter your full name.");
@@ -56,8 +60,18 @@ export default function RegisterPage() {
       return;
     }
 
+    if (name.length > 100) {
+      setError("Name must be 100 characters or less.");
+      return;
+    }
+
     if (!email) {
       setError("Please enter your email address.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Please enter a valid email address.");
       return;
     }
 
@@ -66,10 +80,12 @@ export default function RegisterPage() {
       return;
     }
 
-    // Keep only digits for database storage.
     const cleanPhone = phone.replace(/\D/g, "");
 
-    if (cleanPhone.length < 10) {
+    if (
+      cleanPhone.length < 10 ||
+      cleanPhone.length > 15
+    ) {
       setError("Please enter a valid phone number.");
       return;
     }
@@ -77,6 +93,13 @@ export default function RegisterPage() {
     if (password.length < 8) {
       setError(
         "Password must be at least 8 characters long."
+      );
+      return;
+    }
+
+    if (password.length > 128) {
+      setError(
+        "Password must be 128 characters or less."
       );
       return;
     }
@@ -93,25 +116,27 @@ export default function RegisterPage() {
       return;
     }
 
-    // -----------------------------
+    // ==========================================================
     // SUPABASE SIGNUP
-    // -----------------------------
+    // ==========================================================
 
     try {
       setLoading(true);
 
-      const { data, error: signUpError } =
-        await supabase.auth.signUp({
-          email,
-          password,
+      const {
+        data,
+        error: signUpError,
+      } = await supabase.auth.signUp({
+        email,
+        password,
 
-          options: {
-            data: {
-              full_name: name,
-              phone: cleanPhone,
-            },
+        options: {
+          data: {
+            full_name: name,
+            phone: cleanPhone,
           },
-        });
+        },
+      });
 
       if (signUpError) {
         throw signUpError;
@@ -130,7 +155,7 @@ export default function RegisterPage() {
 
         role: "customer"
 
-        The database trigger handles this securely:
+        The database trigger should handle this securely:
 
         auth.users
              ↓
@@ -141,7 +166,7 @@ export default function RegisterPage() {
         role = customer
 
         This prevents users from choosing:
-        owner/admin
+        owner / admin
         from the frontend.
       */
 
@@ -164,17 +189,15 @@ export default function RegisterPage() {
       ) {
         message =
           "An account with this email already exists. Please sign in.";
-      }
-
-      if (
+      } else if (
         lowerMessage.includes("email rate limit") ||
         lowerMessage.includes("rate limit")
       ) {
         message =
           "Too many signup attempts. Please wait a little and try again.";
-      }
-
-      if (lowerMessage.includes("password")) {
+      } else if (
+        lowerMessage.includes("password")
+      ) {
         message =
           "Please use a stronger password with at least 8 characters.";
       }
@@ -185,9 +208,9 @@ export default function RegisterPage() {
     }
   }
 
-  // -----------------------------
+  // ============================================================
   // GOOGLE SIGNUP
-  // -----------------------------
+  // ============================================================
 
   async function handleGoogleSignup() {
     setError("");
@@ -195,15 +218,16 @@ export default function RegisterPage() {
     try {
       setLoading(true);
 
-      const { error: googleError } =
-        await supabase.auth.signInWithOAuth({
-          provider: "google",
+      const {
+        error: googleError,
+      } = await supabase.auth.signInWithOAuth({
+        provider: "google",
 
-          options: {
-            redirectTo:
-              `${window.location.origin}/auth/callback`,
-          },
-        });
+        options: {
+          redirectTo:
+            `${window.location.origin}/auth/callback`,
+        },
+      });
 
       if (googleError) {
         throw googleError;
@@ -219,9 +243,9 @@ export default function RegisterPage() {
     }
   }
 
-  // -----------------------------
+  // ============================================================
   // SUCCESS SCREEN
-  // -----------------------------
+  // ============================================================
 
   if (submitted) {
     return (
@@ -232,8 +256,10 @@ export default function RegisterPage() {
           <div className="mx-auto flex min-h-[calc(100vh-96px)] max-w-7xl items-center justify-center px-6 py-20">
             <div className="w-full max-w-xl text-center">
 
-              {/* Success Icon */}
-              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-[#c9a45c]/40 bg-[#c9a45c]/10">
+              <div
+                className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-[#c9a45c]/40 bg-[#c9a45c]/10"
+                aria-hidden="true"
+              >
                 <span className="text-4xl text-[#c9a45c]">
                   ✓
                 </span>
@@ -255,7 +281,6 @@ export default function RegisterPage() {
               </p>
 
               <div className="mx-auto mt-10 flex max-w-md flex-col gap-3">
-
                 <button
                   type="button"
                   onClick={() => router.push("/login")}
@@ -270,14 +295,12 @@ export default function RegisterPage() {
                 >
                   Return to Aarambh Restaurant
                 </Link>
-
               </div>
 
               <p className="mt-10 text-xs leading-5 text-white/25">
                 Your account information is securely
                 stored with Aarambh Restaurant.
               </p>
-
             </div>
           </div>
         </section>
@@ -287,52 +310,54 @@ export default function RegisterPage() {
     );
   }
 
-  // -----------------------------
+  // ============================================================
   // REGISTER PAGE
-  // -----------------------------
+  // ============================================================
 
   return (
     <main className="min-h-screen bg-black text-white">
       <Navbar />
 
       <section className="min-h-screen border-b border-white/10 pt-24">
-
         <div className="mx-auto grid min-h-[calc(100vh-96px)] max-w-7xl lg:grid-cols-2">
 
-          {/* -------------------------------- */}
-          {/* LEFT IMAGE / BRAND SECTION */}
-          {/* -------------------------------- */}
+          {/* ==================================================
+              LEFT IMAGE / BRAND SECTION
+          ================================================== */}
 
           <div className="relative hidden overflow-hidden border-r border-white/10 lg:block">
-
-            <img
+            <Image
               src="/images/signature-dish.png"
               alt="Aarambh Restaurant signature dish"
-              className="absolute inset-0 h-full w-full object-cover"
+              fill
+              priority
+              sizes="(min-width: 1024px) 50vw, 0px"
+              className="object-cover"
             />
 
-            <div className="absolute inset-0 bg-black/55" />
+            <div
+              className="absolute inset-0 bg-black/55"
+              aria-hidden="true"
+            />
 
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+            <div
+              className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"
+              aria-hidden="true"
+            />
 
             <div className="absolute bottom-0 left-0 right-0 p-12">
-
               <p className="mb-5 text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
                 Welcome to Aarambh
               </p>
 
               <h1 className="max-w-xl text-5xl font-light leading-tight">
-
                 Your table.
                 <br />
-
                 Your taste.
                 <br />
-
                 <span className="italic text-[#c9a45c]">
                   Your Aarambh.
                 </span>
-
               </h1>
 
               <p className="mt-6 max-w-md text-sm leading-7 text-white/60">
@@ -341,22 +366,19 @@ export default function RegisterPage() {
                 enjoy a more personalized dining
                 experience.
               </p>
-
             </div>
           </div>
 
-          {/* -------------------------------- */}
-          {/* RIGHT REGISTER FORM */}
-          {/* -------------------------------- */}
+          {/* ==================================================
+              RIGHT REGISTER FORM
+          ================================================== */}
 
           <div className="flex items-center px-6 py-16 sm:px-10 lg:px-16 xl:px-20">
-
             <div className="mx-auto w-full max-w-md">
 
-              {/* Header */}
+              {/* HEADER */}
 
               <div className="mb-10">
-
                 <p className="mb-4 text-xs uppercase tracking-[0.35em] text-[#c9a45c]">
                   Customer Account
                 </p>
@@ -369,31 +391,30 @@ export default function RegisterPage() {
                   Join Aarambh Restaurant and make every
                   dining experience more personal.
                 </p>
-
               </div>
 
-              {/* Error */}
+              {/* ERROR */}
 
               {error && (
                 <div
                   role="alert"
+                  aria-live="assertive"
                   className="mb-6 border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm leading-6 text-red-300"
                 >
                   {error}
                 </div>
               )}
 
-              {/* Form */}
+              {/* FORM */}
 
               <form
                 onSubmit={handleSubmit}
                 className="space-y-5"
               >
 
-                {/* Full Name */}
+                {/* FULL NAME */}
 
                 <div>
-
                   <label
                     htmlFor="name"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -407,17 +428,16 @@ export default function RegisterPage() {
                     type="text"
                     autoComplete="name"
                     required
+                    maxLength={100}
                     placeholder="Your full name"
                     disabled={loading}
                     className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
                   />
-
                 </div>
 
-                {/* Email */}
+                {/* EMAIL */}
 
                 <div>
-
                   <label
                     htmlFor="email"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -431,17 +451,16 @@ export default function RegisterPage() {
                     type="email"
                     autoComplete="email"
                     required
+                    maxLength={254}
                     placeholder="you@example.com"
                     disabled={loading}
                     className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
                   />
-
                 </div>
 
-                {/* Phone */}
+                {/* PHONE */}
 
                 <div>
-
                   <label
                     htmlFor="phone"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -456,17 +475,16 @@ export default function RegisterPage() {
                     inputMode="tel"
                     autoComplete="tel"
                     required
+                    maxLength={20}
                     placeholder="+91 98765 43210"
                     disabled={loading}
                     className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
                   />
-
                 </div>
 
-                {/* Password */}
+                {/* PASSWORD */}
 
                 <div>
-
                   <label
                     htmlFor="password"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -475,7 +493,6 @@ export default function RegisterPage() {
                   </label>
 
                   <div className="relative">
-
                     <input
                       id="password"
                       name="password"
@@ -487,6 +504,7 @@ export default function RegisterPage() {
                       autoComplete="new-password"
                       required
                       minLength={8}
+                      maxLength={128}
                       placeholder="Minimum 8 characters"
                       disabled={loading}
                       className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
@@ -496,24 +514,28 @@ export default function RegisterPage() {
                       type="button"
                       onClick={() =>
                         setShowPassword(
-                          !showPassword
+                          (current) => !current
                         )
                       }
                       disabled={loading}
+                      aria-label={
+                        showPassword
+                          ? "Hide password"
+                          : "Show password"
+                      }
+                      aria-pressed={showPassword}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 hover:text-[#c9a45c] disabled:cursor-not-allowed"
                     >
                       {showPassword
                         ? "Hide"
                         : "Show"}
                     </button>
-
                   </div>
                 </div>
 
-                {/* Confirm Password */}
+                {/* CONFIRM PASSWORD */}
 
                 <div>
-
                   <label
                     htmlFor="confirmPassword"
                     className="mb-2 block text-xs uppercase tracking-[0.2em] text-white/50"
@@ -522,7 +544,6 @@ export default function RegisterPage() {
                   </label>
 
                   <div className="relative">
-
                     <input
                       id="confirmPassword"
                       name="confirmPassword"
@@ -534,6 +555,7 @@ export default function RegisterPage() {
                       autoComplete="new-password"
                       required
                       minLength={8}
+                      maxLength={128}
                       placeholder="Re-enter your password"
                       disabled={loading}
                       className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-60"
@@ -543,24 +565,28 @@ export default function RegisterPage() {
                       type="button"
                       onClick={() =>
                         setShowConfirmPassword(
-                          !showConfirmPassword
+                          (current) => !current
                         )
                       }
                       disabled={loading}
+                      aria-label={
+                        showConfirmPassword
+                          ? "Hide password confirmation"
+                          : "Show password confirmation"
+                      }
+                      aria-pressed={showConfirmPassword}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/40 hover:text-[#c9a45c] disabled:cursor-not-allowed"
                     >
                       {showConfirmPassword
                         ? "Hide"
                         : "Show"}
                     </button>
-
                   </div>
                 </div>
 
-                {/* Terms */}
+                {/* TERMS */}
 
                 <label className="flex cursor-pointer items-start gap-3 pt-1">
-
                   <input
                     type="checkbox"
                     name="terms"
@@ -570,7 +596,6 @@ export default function RegisterPage() {
                   />
 
                   <span className="text-xs leading-5 text-white/45">
-
                     I agree to the{" "}
 
                     <Link
@@ -590,42 +615,43 @@ export default function RegisterPage() {
                     </Link>
 
                     .
-
                   </span>
-
                 </label>
 
-                {/* Submit */}
+                {/* SUBMIT */}
 
                 <button
                   type="submit"
                   disabled={loading}
                   className="group flex w-full items-center justify-center gap-3 bg-[#c9a45c] px-6 py-4 text-sm font-medium text-black transition hover:bg-[#dfbd72] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-
                   {loading ? (
                     <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+                      <span
+                        className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black"
+                        aria-hidden="true"
+                      />
+
                       Creating account...
                     </>
                   ) : (
                     <>
                       Create Account
 
-                      <span className="transition-transform group-hover:translate-x-1">
+                      <span
+                        className="transition-transform group-hover:translate-x-1"
+                        aria-hidden="true"
+                      >
                         →
                       </span>
                     </>
                   )}
-
                 </button>
-
               </form>
 
-              {/* Divider */}
+              {/* DIVIDER */}
 
               <div className="my-8 flex items-center gap-4">
-
                 <div className="h-px flex-1 bg-white/10" />
 
                 <span className="text-xs uppercase tracking-[0.2em] text-white/30">
@@ -633,10 +659,9 @@ export default function RegisterPage() {
                 </span>
 
                 <div className="h-px flex-1 bg-white/10" />
-
               </div>
 
-              {/* Google */}
+              {/* GOOGLE */}
 
               <button
                 type="button"
@@ -644,19 +669,19 @@ export default function RegisterPage() {
                 disabled={loading}
                 className="flex w-full items-center justify-center gap-3 border border-white/10 bg-white/[0.02] px-6 py-4 text-sm text-white/80 transition hover:border-white/25 hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-50"
               >
-
-                <span className="text-base font-medium">
+                <span
+                  aria-hidden="true"
+                  className="text-base font-medium"
+                >
                   G
                 </span>
 
                 Continue with Google
-
               </button>
 
-              {/* Login */}
+              {/* LOGIN */}
 
               <p className="mt-8 text-center text-sm text-white/40">
-
                 Already have an account?{" "}
 
                 <Link
@@ -665,13 +690,11 @@ export default function RegisterPage() {
                 >
                   Sign in
                 </Link>
-
               </p>
 
-              {/* Owner */}
+              {/* OWNER */}
 
               <div className="mt-6 text-center">
-
                 <p className="text-xs text-white/30">
                   Are you a restaurant owner?
                 </p>
@@ -682,20 +705,16 @@ export default function RegisterPage() {
                 >
                   Create Restaurant Owner Account →
                 </Link>
-
               </div>
 
-              {/* Privacy */}
+              {/* PRIVACY */}
 
               <div className="mt-10 border-t border-white/10 pt-6 text-center">
-
                 <p className="text-xs leading-5 text-white/30">
                   Your account information is kept private
                   and securely stored.
                 </p>
-
               </div>
-
             </div>
           </div>
         </div>

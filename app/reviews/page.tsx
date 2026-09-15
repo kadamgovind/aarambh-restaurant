@@ -66,16 +66,19 @@ const reviews: Review[] = [
 ];
 
 function Stars({ rating }: { rating: number }) {
+  const safeRating = Math.min(5, Math.max(0, Math.round(rating)));
+
   return (
     <div
       className="flex items-center gap-1"
-      aria-label={`${rating} out of 5 stars`}
+      aria-label={`${safeRating} out of 5 stars`}
     >
       {Array.from({ length: 5 }).map((_, index) => (
         <span
           key={index}
+          aria-hidden="true"
           className={
-            index < rating
+            index < safeRating
               ? "text-[#c9a45c]"
               : "text-white/20"
           }
@@ -91,6 +94,7 @@ export default function ReviewsPage() {
   const [visibleReviews, setVisibleReviews] = useState(6);
 
   const displayedReviews = reviews.slice(0, visibleReviews);
+  const hasMoreReviews = visibleReviews < reviews.length;
 
   return (
     <main className="min-h-screen bg-[#080808] text-white">
@@ -187,8 +191,8 @@ export default function ReviewsPage() {
             </div>
 
             <p className="max-w-md text-sm leading-7 text-white/45">
-              Real customer feedback can be connected here later
-              through your preferred review source or database.
+              Guest feedback helps us understand what matters most
+              to the people who dine with us.
             </p>
           </div>
 
@@ -198,10 +202,12 @@ export default function ReviewsPage() {
                 key={review.id}
                 className="group rounded-3xl border border-white/10 bg-[#0d0d0d] p-7 transition duration-300 hover:-translate-y-1 hover:border-[#c9a45c]/30"
               >
-                {/* Top */}
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#c9a45c]/30 bg-[#c9a45c]/10 text-sm font-semibold text-[#c9a45c]">
+                    <div
+                      aria-hidden="true"
+                      className="flex h-11 w-11 items-center justify-center rounded-full border border-[#c9a45c]/30 bg-[#c9a45c]/10 text-sm font-semibold text-[#c9a45c]"
+                    >
                       {review.initials}
                     </div>
 
@@ -216,15 +222,18 @@ export default function ReviewsPage() {
                     </div>
                   </div>
 
-                  <span className="text-white/20">“</span>
+                  <span
+                    aria-hidden="true"
+                    className="text-white/20"
+                  >
+                    “
+                  </span>
                 </div>
 
-                {/* Rating */}
                 <div className="mt-6">
                   <Stars rating={review.rating} />
                 </div>
 
-                {/* Review */}
                 <p className="mt-5 text-sm leading-7 text-white/60">
                   “{review.text}”
                 </p>
@@ -234,9 +243,10 @@ export default function ReviewsPage() {
             ))}
           </div>
 
-          {visibleReviews < reviews.length && (
+          {hasMoreReviews && (
             <div className="mt-10 flex justify-center">
               <button
+                type="button"
                 onClick={() => setVisibleReviews(reviews.length)}
                 className="rounded-full border border-white/15 px-7 py-3 text-sm font-medium text-white transition hover:border-[#c9a45c]/60 hover:text-[#c9a45c]"
               >

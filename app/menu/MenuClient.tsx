@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabase";
 import { Loader2 } from "lucide-react";
@@ -27,6 +28,10 @@ type MenuItem = {
 
 const fallbackImage = "/images/signature-dish.png";
 
+const currencyFormatter = new Intl.NumberFormat("en-IN", {
+  maximumFractionDigits: 0,
+});
+
 export default function MenuClient() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -39,8 +44,12 @@ export default function MenuClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [failedImages, setFailedImages] = useState<
+    Record<string, boolean>
+  >({});
+
   useEffect(() => {
-    loadMenu();
+    void loadMenu();
   }, []);
 
   async function loadMenu() {
@@ -59,8 +68,7 @@ export default function MenuClient() {
 
       if (restaurantError) {
         throw new Error(
-          restaurantError.message ||
-            "Failed to load restaurant."
+          restaurantError.message || "Failed to load restaurant."
         );
       }
 
@@ -71,51 +79,50 @@ export default function MenuClient() {
         return;
       }
 
-      const [categoriesResult, itemsResult] =
-        await Promise.all([
-          supabase
-            .from("menu_categories")
-            .select(
-              `
-                id,
-                name,
-                slug,
-                display_order
-              `
-            )
-            .eq("restaurant_id", restaurant.id)
-            .eq("is_active", true)
-            .order("display_order", {
-              ascending: true,
-            })
-            .order("name", {
-              ascending: true,
-            }),
+      const [categoriesResult, itemsResult] = await Promise.all([
+        supabase
+          .from("menu_categories")
+          .select(
+            `
+              id,
+              name,
+              slug,
+              display_order
+            `
+          )
+          .eq("restaurant_id", restaurant.id)
+          .eq("is_active", true)
+          .order("display_order", {
+            ascending: true,
+          })
+          .order("name", {
+            ascending: true,
+          }),
 
-          supabase
-            .from("menu_items")
-            .select(
-              `
-                id,
-                category_id,
-                name,
-                description,
-                price,
-                item_type,
-                image_url,
-                is_featured,
-                display_order
-              `
-            )
-            .eq("restaurant_id", restaurant.id)
-            .eq("is_available", true)
-            .order("display_order", {
-              ascending: true,
-            })
-            .order("name", {
-              ascending: true,
-            }),
-        ]);
+        supabase
+          .from("menu_items")
+          .select(
+            `
+              id,
+              category_id,
+              name,
+              description,
+              price,
+              item_type,
+              image_url,
+              is_featured,
+              display_order
+            `
+          )
+          .eq("restaurant_id", restaurant.id)
+          .eq("is_available", true)
+          .order("display_order", {
+            ascending: true,
+          })
+          .order("name", {
+            ascending: true,
+          }),
+      ]);
 
       if (categoriesResult.error) {
         throw new Error(
@@ -138,6 +145,8 @@ export default function MenuClient() {
       setMenuItems(
         (itemsResult.data || []) as MenuItem[]
       );
+
+      setFailedImages({});
     } catch (err) {
       console.error("Menu loading error:", err);
 
@@ -193,14 +202,29 @@ export default function MenuClient() {
     activeType,
   ]);
 
+  function handleImageError(itemId: string) {
+    setFailedImages((current) => {
+      if (current[itemId]) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [itemId]: true,
+      };
+    });
+  }
+
+  function clearFilters() {
+    setActiveCategory("All");
+    setActiveType("All");
+  }
+
   return (
     <>
       <Navbar />
 
-      {/* =====================================================
-          MENU HERO
-      ===================================================== */}
-
+      {/* MENU HERO */}
       <section className="border-b border-white/10 bg-black">
         <div className="mx-auto max-w-7xl px-5 pb-20 pt-40 sm:px-6 sm:pb-24 sm:pt-48 lg:px-8">
           <div className="max-w-4xl">
@@ -228,7 +252,9 @@ export default function MenuClient() {
                 className="inline-flex min-h-11 items-center rounded-full bg-[#c9a45c] px-6 text-sm font-semibold text-black transition-all duration-300 hover:bg-[#dfbd78]"
               >
                 Order Online
-                <span className="ml-2">→</span>
+                <span className="ml-2" aria-hidden="true">
+                  →
+                </span>
               </Link>
 
               <Link
@@ -242,23 +268,29 @@ export default function MenuClient() {
         </div>
       </section>
 
-      {/* =====================================================
-          FILTERS
-      ===================================================== */}
-
+      {/* FILTERS */}
       <section className="sticky top-0 z-30 border-b border-white/10 bg-black/90 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-5 py-5 sm:px-6 lg:px-8">
           {loading ? (
-            <div className="flex items-center gap-2 text-sm text-white/40">
+            <div
+              className="flex items-center gap-2 text-sm text-white/40"
+              role="status"
+              aria-live="polite"
+            >
               <Loader2
                 size={16}
                 className="animate-spin"
+                aria-hidden="true"
               />
               Loading menu...
             </div>
           ) : (
             <>
-              <div className="flex gap-2 overflow-x-auto pb-2">
+              <div
+                className="flex gap-2 overflow-x-auto pb-2"
+                role="group"
+                aria-label="Menu categories"
+              >
                 {categoryOptions.map((category) => {
                   const active =
                     activeCategory === category;
@@ -267,6 +299,7 @@ export default function MenuClient() {
                     <button
                       key={category}
                       type="button"
+                      aria-pressed={active}
                       onClick={() =>
                         setActiveCategory(category)
                       }
@@ -282,7 +315,11 @@ export default function MenuClient() {
                 })}
               </div>
 
-              <div className="mt-4 flex gap-2">
+              <div
+                className="mt-4 flex gap-2"
+                role="group"
+                aria-label="Dietary preference"
+              >
                 {(["All", "Veg", "Non-Veg"] as const).map(
                   (type) => {
                     const active = activeType === type;
@@ -291,6 +328,7 @@ export default function MenuClient() {
                       <button
                         key={type}
                         type="button"
+                        aria-pressed={active}
                         onClick={() =>
                           setActiveType(type)
                         }
@@ -311,10 +349,7 @@ export default function MenuClient() {
         </div>
       </section>
 
-      {/* =====================================================
-          MENU GRID
-      ===================================================== */}
-
+      {/* MENU GRID */}
       <section className="bg-[#0a0a0a]">
         <div className="mx-auto max-w-7xl px-5 py-16 sm:px-6 sm:py-20 lg:px-8">
           <div className="mb-8 flex items-center justify-between gap-4">
@@ -338,10 +373,7 @@ export default function MenuClient() {
                 activeType !== "All") && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveCategory("All");
-                    setActiveType("All");
-                  }}
+                  onClick={clearFilters}
                   className="text-xs text-white/40 transition hover:text-[#c9a45c]"
                 >
                   Clear Filters
@@ -350,13 +382,17 @@ export default function MenuClient() {
           </div>
 
           {/* Loading */}
-
           {loading && (
-            <div className="flex min-h-80 items-center justify-center rounded-2xl border border-white/10 bg-black">
+            <div
+              className="flex min-h-80 items-center justify-center rounded-2xl border border-white/10 bg-black"
+              role="status"
+              aria-live="polite"
+            >
               <div className="flex items-center gap-3 text-sm text-white/40">
                 <Loader2
                   size={20}
                   className="animate-spin text-[#c9a45c]"
+                  aria-hidden="true"
                 />
                 Loading our menu...
               </div>
@@ -364,16 +400,18 @@ export default function MenuClient() {
           )}
 
           {/* Error */}
-
           {!loading && error && (
-            <div className="rounded-2xl border border-red-500/20 bg-red-500/5 px-6 py-16 text-center">
+            <div
+              className="rounded-2xl border border-red-500/20 bg-red-500/5 px-6 py-16 text-center"
+              role="alert"
+            >
               <p className="text-sm text-red-300">
                 {error}
               </p>
 
               <button
                 type="button"
-                onClick={loadMenu}
+                onClick={() => void loadMenu()}
                 className="mt-5 rounded-full border border-white/15 px-5 py-2.5 text-xs font-medium text-white/60 transition hover:border-[#c9a45c] hover:text-[#c9a45c]"
               >
                 Try Again
@@ -382,7 +420,6 @@ export default function MenuClient() {
           )}
 
           {/* Menu */}
-
           {!loading &&
             !error &&
             filteredItems.length > 0 && (
@@ -397,29 +434,36 @@ export default function MenuClient() {
                       ? "Veg"
                       : "Non-Veg";
 
+                  const imageSrc =
+                    failedImages[item.id] || !item.image_url
+                      ? fallbackImage
+                      : item.image_url;
+
                   return (
                     <article
                       key={item.id}
                       className="group overflow-hidden rounded-2xl border border-white/10 bg-black transition-all duration-300 hover:-translate-y-1 hover:border-white/20"
                     >
-                      {/* Image */}
-
                       <div className="relative aspect-[4/3] overflow-hidden bg-[#111]">
-                        <img
-                          src={
-                            item.image_url ||
-                            fallbackImage
+                        <Image
+                          src={imageSrc}
+                          alt={`${item.name} at Aarambh Restaurant`}
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                          className="object-cover transition-transform duration-700 group-hover:scale-105"
+                          unoptimized={
+                            Boolean(item.image_url) &&
+                            !failedImages[item.id]
                           }
-                          alt={item.name}
-                          loading="lazy"
-                          className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          onError={(event) => {
-                            event.currentTarget.src =
-                              fallbackImage;
-                          }}
+                          onError={() =>
+                            handleImageError(item.id)
+                          }
                         />
 
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                        <div
+                          aria-hidden="true"
+                          className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"
+                        />
 
                         {item.is_featured && (
                           <div className="absolute left-4 top-4 rounded-full border border-[#c9a45c]/40 bg-black/75 px-3 py-1.5 backdrop-blur">
@@ -442,8 +486,6 @@ export default function MenuClient() {
                         </div>
                       </div>
 
-                      {/* Content */}
-
                       <div className="p-6">
                         <div className="flex items-start justify-between gap-4">
                           <h2 className="text-xl font-medium tracking-tight text-white">
@@ -452,8 +494,8 @@ export default function MenuClient() {
 
                           <p className="shrink-0 text-sm font-semibold text-[#c9a45c]">
                             ₹
-                            {Number(item.price).toFixed(
-                              0
+                            {currencyFormatter.format(
+                              Number(item.price) || 0
                             )}
                           </p>
                         </div>
@@ -474,7 +516,11 @@ export default function MenuClient() {
                             href="/order"
                             className="text-xs font-medium text-white/60 transition-colors hover:text-[#c9a45c]"
                           >
-                            Add to Order →
+                            Add to Order
+                            <span aria-hidden="true">
+                              {" "}
+                              →
+                            </span>
                           </Link>
                         </div>
                       </div>
@@ -485,7 +531,6 @@ export default function MenuClient() {
             )}
 
           {/* Empty */}
-
           {!loading &&
             !error &&
             filteredItems.length === 0 && (
@@ -496,11 +541,8 @@ export default function MenuClient() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveCategory("All");
-                    setActiveType("All");
-                  }}
-                  className="mt-5 text-xs text-[#c9a45c]"
+                  onClick={clearFilters}
+                  className="mt-5 text-xs text-[#c9a45c] transition hover:text-[#dfbd78]"
                 >
                   Reset Filters
                 </button>
@@ -509,10 +551,7 @@ export default function MenuClient() {
         </div>
       </section>
 
-      {/* =====================================================
-          KITCHEN NOTE
-      ===================================================== */}
-
+      {/* KITCHEN NOTE */}
       <section className="border-t border-white/10 bg-black">
         <div className="mx-auto max-w-3xl px-5 py-20 text-center sm:px-6 sm:py-24">
           <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-[#c9a45c] sm:text-xs">
@@ -528,10 +567,7 @@ export default function MenuClient() {
         </div>
       </section>
 
-      {/* =====================================================
-          CTA
-      ===================================================== */}
-
+      {/* CTA */}
       <section className="border-t border-white/10 bg-[#0a0a0a]">
         <div className="mx-auto max-w-5xl px-5 py-24 text-center sm:px-6 sm:py-32">
           <p className="text-[10px] font-medium uppercase tracking-[0.35em] text-[#c9a45c] sm:text-xs">
@@ -557,7 +593,9 @@ export default function MenuClient() {
               className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-white px-7 text-sm font-semibold text-black transition-all duration-300 hover:bg-[#c9a45c] sm:w-auto"
             >
               Order Online
-              <span className="ml-2">→</span>
+              <span className="ml-2" aria-hidden="true">
+                →
+              </span>
             </Link>
 
             <Link

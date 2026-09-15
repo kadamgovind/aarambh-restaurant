@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -19,11 +20,15 @@ export default function ResetPasswordPage() {
 
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [recoverySessionValid, setRecoverySessionValid] =
+    useState(false);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     let mounted = true;
+    let redirectTimer: ReturnType<typeof setTimeout> | undefined;
 
     const checkRecoverySession = async () => {
       try {
@@ -32,7 +37,25 @@ export default function ResetPasswordPage() {
 
         if (!mounted) return;
 
-        if (sessionError || !data.session) {
+        if (sessionError) {
+          console.error(
+            "Recovery session error:",
+            sessionError
+          );
+
+          setRecoverySessionValid(false);
+          setError(
+            "This password reset link is invalid or has expired. Please request a new reset link."
+          );
+
+          return;
+        }
+
+        if (data.session) {
+          setRecoverySessionValid(true);
+          setError("");
+        } else {
+          setRecoverySessionValid(false);
           setError(
             "This password reset link is invalid or has expired. Please request a new reset link."
           );
@@ -41,6 +64,7 @@ export default function ResetPasswordPage() {
         console.error("Recovery session error:", err);
 
         if (mounted) {
+          setRecoverySessionValid(false);
           setError(
             "Unable to verify the reset link. Please request a new password reset link."
           );
@@ -56,28 +80,53 @@ export default function ResetPasswordPage() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!mounted) return;
+    } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (!mounted) return;
 
-      if (event === "PASSWORD_RECOVERY" && session) {
-        setError("");
-        setCheckingSession(false);
+        if (event === "PASSWORD_RECOVERY" && session) {
+          setRecoverySessionValid(true);
+          setError("");
+          setCheckingSession(false);
+        }
       }
-    });
+    );
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
+
+      if (redirectTimer) {
+        clearTimeout(redirectTimer);
+      }
     };
   }, []);
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (
+    e: FormEvent<HTMLFormElement>
+  ) => {
     e.preventDefault();
 
     setError("");
 
     if (password.length < 8) {
-      setError("Password must be at least 8 characters long.");
+      setError(
+        "Password must be at least 8 characters long."
+      );
+      return;
+    }
+
+    if (password.length > 128) {
+      setError(
+        "Password must be 128 characters or fewer."
+      );
+      return;
+    }
+
+    if (confirmPassword.length > 128) {
+      setError(
+        "Password must be 128 characters or fewer."
+      );
       return;
     }
 
@@ -95,12 +144,27 @@ export default function ResetPasswordPage() {
         });
 
       if (updateError) {
-        console.error("Password update error:", updateError);
-
-        setError(
-          updateError.message ||
-            "Unable to update your password. Please try again."
+        console.error(
+          "Password update error:",
+          updateError
         );
+
+        const message =
+          updateError.message.toLowerCase();
+
+        if (message.includes("same password")) {
+          setError(
+            "Please choose a different password from your previous one."
+          );
+        } else if (message.includes("password")) {
+          setError(
+            "Unable to update your password. Please choose a stronger password and try again."
+          );
+        } else {
+          setError(
+            "Unable to update your password. Please try again."
+          );
+        }
 
         return;
       }
@@ -109,11 +173,14 @@ export default function ResetPasswordPage() {
 
       await supabase.auth.signOut();
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         router.push("/login");
       }, 2500);
     } catch (err) {
-      console.error("Unexpected password update error:", err);
+      console.error(
+        "Unexpected password update error:",
+        err
+      );
 
       setError(
         "Something went wrong. Please try again."
@@ -129,19 +196,22 @@ export default function ResetPasswordPage() {
 
       <section className="min-h-screen border-b border-white/10 pt-24">
         <div className="mx-auto grid min-h-[calc(100vh-96px)] max-w-7xl lg:grid-cols-2">
-
           {/* =====================================================
               LEFT — VISUAL PANEL
           ===================================================== */}
 
           <div className="relative hidden overflow-hidden border-r border-white/10 lg:block">
-            <img
+            <Image
               src="/images/signature-dish.png"
               alt="Aarambh Restaurant dining experience"
-              className="absolute inset-0 h-full w-full object-cover"
+              fill
+              priority
+              sizes="(min-width: 1024px) 50vw, 0px"
+              className="object-cover"
             />
 
             <div className="absolute inset-0 bg-black/60" />
+
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
 
             <div className="absolute bottom-0 left-0 right-0 p-12">
@@ -161,7 +231,8 @@ export default function ResetPasswordPage() {
 
               <p className="mt-6 max-w-md text-sm leading-7 text-white/60">
                 Create a new password and continue enjoying
-                your reservations, orders and dining experiences.
+                your reservations, orders and dining
+                experiences.
               </p>
             </div>
           </div>
@@ -172,14 +243,19 @@ export default function ResetPasswordPage() {
 
           <div className="flex items-center px-6 py-16 sm:px-10 lg:px-16 xl:px-20">
             <div className="mx-auto w-full max-w-md">
-
               {checkingSession ? (
                 /* =================================================
                    CHECKING SESSION
                 ================================================= */
 
-                <div className="py-10 text-center">
-                  <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-[#c9a45c]" />
+                <div
+                  className="py-10 text-center"
+                  aria-live="polite"
+                >
+                  <div
+                    aria-hidden="true"
+                    className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-[#c9a45c]"
+                  />
 
                   <p className="mt-6 text-sm text-white/50">
                     Verifying your reset link...
@@ -192,7 +268,10 @@ export default function ResetPasswordPage() {
 
                 <div className="py-10 text-center">
                   <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-[#c9a45c]/40 bg-[#c9a45c]/10">
-                    <span className="text-3xl text-[#c9a45c]">
+                    <span
+                      aria-hidden="true"
+                      className="text-3xl text-[#c9a45c]"
+                    >
                       ✓
                     </span>
                   </div>
@@ -206,8 +285,9 @@ export default function ResetPasswordPage() {
                   </h2>
 
                   <p className="mx-auto mt-5 max-w-sm text-sm leading-7 text-white/50">
-                    Your password has been successfully updated.
-                    Redirecting you to the sign in page...
+                    Your password has been successfully
+                    updated. Redirecting you to the sign in
+                    page...
                   </p>
 
                   <Link
@@ -217,16 +297,17 @@ export default function ResetPasswordPage() {
                     Continue to Sign In
                   </Link>
                 </div>
-              ) : error &&
-                !password &&
-                !confirmPassword ? (
+              ) : !recoverySessionValid ? (
                 /* =================================================
                    INVALID / EXPIRED LINK
                 ================================================= */
 
                 <div className="py-10 text-center">
                   <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
-                    <span className="text-2xl text-red-300">
+                    <span
+                      aria-hidden="true"
+                      className="text-2xl text-red-300"
+                    >
                       !
                     </span>
                   </div>
@@ -240,7 +321,8 @@ export default function ResetPasswordPage() {
                   </h2>
 
                   <p className="mx-auto mt-5 max-w-sm text-sm leading-7 text-white/50">
-                    {error}
+                    {error ||
+                      "This password reset link is invalid or has expired. Please request a new reset link."}
                   </p>
 
                   <div className="mt-10 space-y-3">
@@ -298,32 +380,55 @@ export default function ResetPasswordPage() {
                         <input
                           id="password"
                           name="password"
-                          type={showPassword ? "text" : "password"}
+                          type={
+                            showPassword
+                              ? "text"
+                              : "password"
+                          }
                           autoComplete="new-password"
                           required
                           minLength={8}
+                          maxLength={128}
                           value={password}
                           onChange={(e) => {
                             setPassword(e.target.value);
-                            if (error) setError("");
+
+                            if (error) {
+                              setError("");
+                            }
                           }}
                           placeholder="Enter new password"
                           disabled={loading}
+                          aria-describedby="password-help"
                           className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-50"
                         />
 
                         <button
                           type="button"
                           onClick={() =>
-                            setShowPassword(!showPassword)
+                            setShowPassword(
+                              !showPassword
+                            )
                           }
-                          className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-2 text-xs text-white/40 transition hover:text-white"
+                          disabled={loading}
+                          aria-label={
+                            showPassword
+                              ? "Hide password"
+                              : "Show password"
+                          }
+                          aria-pressed={showPassword}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-2 text-xs text-white/40 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {showPassword ? "Hide" : "Show"}
+                          {showPassword
+                            ? "Hide"
+                            : "Show"}
                         </button>
                       </div>
 
-                      <p className="mt-2 text-xs text-white/30">
+                      <p
+                        id="password-help"
+                        className="mt-2 text-xs text-white/30"
+                      >
                         Minimum 8 characters.
                       </p>
                     </div>
@@ -350,13 +455,24 @@ export default function ResetPasswordPage() {
                           autoComplete="new-password"
                           required
                           minLength={8}
+                          maxLength={128}
                           value={confirmPassword}
                           onChange={(e) => {
-                            setConfirmPassword(e.target.value);
-                            if (error) setError("");
+                            setConfirmPassword(
+                              e.target.value
+                            );
+
+                            if (error) {
+                              setError("");
+                            }
                           }}
                           placeholder="Confirm new password"
                           disabled={loading}
+                          aria-describedby={
+                            error
+                              ? "reset-error"
+                              : undefined
+                          }
                           className="w-full border border-white/10 bg-white/[0.03] px-4 py-4 pr-20 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#c9a45c] disabled:cursor-not-allowed disabled:opacity-50"
                         />
 
@@ -367,7 +483,16 @@ export default function ResetPasswordPage() {
                               !showConfirmPassword
                             )
                           }
-                          className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-2 text-xs text-white/40 transition hover:text-white"
+                          disabled={loading}
+                          aria-label={
+                            showConfirmPassword
+                              ? "Hide confirm password"
+                              : "Show confirm password"
+                          }
+                          aria-pressed={
+                            showConfirmPassword
+                          }
+                          className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-2 text-xs text-white/40 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {showConfirmPassword
                             ? "Hide"
@@ -380,7 +505,9 @@ export default function ResetPasswordPage() {
 
                     {error && (
                       <div
+                        id="reset-error"
                         role="alert"
+                        aria-live="assertive"
                         className="border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-300"
                       >
                         {error}
@@ -396,14 +523,20 @@ export default function ResetPasswordPage() {
                     >
                       {loading ? (
                         <>
-                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+                          <span
+                            aria-hidden="true"
+                            className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black"
+                          />
                           Updating Password...
                         </>
                       ) : (
                         <>
                           Update Password
 
-                          <span className="transition-transform group-hover:translate-x-1">
+                          <span
+                            aria-hidden="true"
+                            className="transition-transform group-hover:translate-x-1"
+                          >
                             →
                           </span>
                         </>
@@ -426,8 +559,8 @@ export default function ResetPasswordPage() {
 
                   <div className="mt-12 border-t border-white/10 pt-6">
                     <p className="text-center text-xs leading-5 text-white/30">
-                      For your security, use a password that is
-                      unique to your Aarambh account.
+                      For your security, use a password that
+                      is unique to your Aarambh account.
                     </p>
                   </div>
                 </>

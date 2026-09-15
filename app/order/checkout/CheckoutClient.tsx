@@ -5,7 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import Navbar from "@/components/Navbar";
-import { getCartItems, clearCart, type CartItem } from "@/lib/cart";
+import {
+  getCartItems,
+  clearCart,
+  type CartItem,
+} from "@/lib/cart";
 import { supabase } from "@/lib/supabase";
 
 const FREE_DELIVERY_THRESHOLD = 1000;
@@ -47,13 +51,18 @@ export default function CheckoutClient() {
 
   const subtotal = useMemo(() => {
     return cart.reduce(
-      (sum, item) => sum + Number(item.price) * Number(item.quantity),
+      (sum, item) =>
+        sum +
+        Number(item.price) *
+          Number(item.quantity),
       0
     );
   }, [cart]);
 
   const deliveryFee =
-    subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE;
+    subtotal >= FREE_DELIVERY_THRESHOLD
+      ? 0
+      : DELIVERY_FEE;
 
   const taxes = subtotal * TAX_RATE;
 
@@ -85,19 +94,27 @@ export default function CheckoutClient() {
 
         if (!user) {
           router.replace(
-            `/login?redirect=${encodeURIComponent("/order/checkout")}`
+            `/login?redirect=${encodeURIComponent(
+              "/order/checkout"
+            )}`
           );
           return;
         }
 
-        const { data: profile, error: profileError } = await supabase
+        const {
+          data: profile,
+          error: profileError,
+        } = await supabase
           .from("profiles")
           .select("full_name, phone")
           .eq("id", user.id)
           .maybeSingle();
 
         if (profileError) {
-          console.error("Profile loading error:", profileError);
+          console.error(
+            "Profile loading error:",
+            profileError
+          );
         }
 
         if (!active) return;
@@ -106,14 +123,25 @@ export default function CheckoutClient() {
 
         setForm((current) => ({
           ...current,
-          name: current.name || profile?.full_name || "",
-          phone: current.phone || profile?.phone || "",
+          name:
+            current.name ||
+            profile?.full_name ||
+            "",
+          phone:
+            current.phone ||
+            profile?.phone ||
+            "",
         }));
       } catch (err) {
-        console.error("Checkout loading error:", err);
+        console.error(
+          "Checkout loading error:",
+          err
+        );
 
         if (active) {
-          setError("Unable to load checkout. Please try again.");
+          setError(
+            "Unable to load checkout. Please try again."
+          );
         }
       } finally {
         if (active) {
@@ -137,6 +165,56 @@ export default function CheckoutClient() {
       ...current,
       [field]: value,
     }));
+
+    if (error) {
+      setError("");
+    }
+  }
+
+  function validateCheckout(): string | null {
+    if (cart.length === 0) {
+      return "Your cart is empty.";
+    }
+
+    const name = form.name.trim();
+    const phone = form.phone.trim();
+    const address = form.address.trim();
+    const city = form.city.trim();
+
+    if (!name) {
+      return "Please enter your name.";
+    }
+
+    if (name.length < 2) {
+      return "Please enter a valid name.";
+    }
+
+    if (!phone) {
+      return "Please enter your phone number.";
+    }
+
+    const normalizedPhone = phone.replace(/\D/g, "");
+
+    if (
+      normalizedPhone.length !== 10 ||
+      !/^[6-9]\d{9}$/.test(normalizedPhone)
+    ) {
+      return "Please enter a valid 10-digit Indian mobile number.";
+    }
+
+    if (!address) {
+      return "Please enter your delivery address.";
+    }
+
+    if (address.length < 5) {
+      return "Please enter a more complete delivery address.";
+    }
+
+    if (!city) {
+      return "Please enter your city.";
+    }
+
+    return null;
   }
 
   async function handlePlaceOrder() {
@@ -144,28 +222,10 @@ export default function CheckoutClient() {
 
     setError("");
 
-    if (cart.length === 0) {
-      setError("Your cart is empty.");
-      return;
-    }
+    const validationError = validateCheckout();
 
-    if (!form.name.trim()) {
-      setError("Please enter your name.");
-      return;
-    }
-
-    if (!form.phone.trim()) {
-      setError("Please enter your phone number.");
-      return;
-    }
-
-    if (!form.address.trim()) {
-      setError("Please enter your delivery address.");
-      return;
-    }
-
-    if (!form.city.trim()) {
-      setError("Please enter your city.");
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -183,26 +243,39 @@ export default function CheckoutClient() {
 
       if (!user) {
         router.push(
-          `/login?redirect=${encodeURIComponent("/order/checkout")}`
+          `/login?redirect=${encodeURIComponent(
+            "/order/checkout"
+          )}`
         );
         return;
       }
 
       /*
        * ---------------------------------------------------------
-       * 1. Verify all cart items belong to the same restaurant
+       * 1. Verify cart item IDs
        * ---------------------------------------------------------
        */
 
       const menuItemIds = Array.from(
-        new Set(cart.map((item) => item.id))
+        new Set(
+          cart.map((item) => item.id)
+        )
       );
 
       if (menuItemIds.length === 0) {
         throw new Error("Your cart is empty.");
       }
 
-      const { data: menuItems, error: menuError } = await supabase
+      /*
+       * ---------------------------------------------------------
+       * 2. Fetch authoritative menu data
+       * ---------------------------------------------------------
+       */
+
+      const {
+        data: menuItems,
+        error: menuError,
+      } = await supabase
         .from("menu_items")
         .select(
           "id, restaurant_id, name, price, item_type, is_available"
@@ -213,7 +286,10 @@ export default function CheckoutClient() {
         throw menuError;
       }
 
-      if (!menuItems || menuItems.length !== menuItemIds.length) {
+      if (
+        !menuItems ||
+        menuItems.length !== menuItemIds.length
+      ) {
         throw new Error(
           "Some items in your cart are no longer available."
         );
@@ -221,6 +297,12 @@ export default function CheckoutClient() {
 
       const verifiedItems =
         menuItems as VerifiedMenuItem[];
+
+      /*
+       * ---------------------------------------------------------
+       * 3. Verify restaurant consistency
+       * ---------------------------------------------------------
+       */
 
       const restaurantIds = Array.from(
         new Set(
@@ -240,23 +322,45 @@ export default function CheckoutClient() {
 
       /*
        * ---------------------------------------------------------
-       * 2. Verify availability
+       * 4. Verify availability and quantities
        * ---------------------------------------------------------
        */
 
-      const unavailableItem = verifiedItems.find(
-        (item) => !item.is_available
-      );
-
-      if (unavailableItem) {
-        throw new Error(
-          `${unavailableItem.name} is currently unavailable.`
+      for (const cartItem of cart) {
+        const menuItem = verifiedItems.find(
+          (item) => item.id === cartItem.id
         );
+
+        if (!menuItem) {
+          throw new Error(
+            `${cartItem.name} is no longer available.`
+          );
+        }
+
+        if (!menuItem.is_available) {
+          throw new Error(
+            `${menuItem.name} is currently unavailable.`
+          );
+        }
+
+        const quantity = Number(
+          cartItem.quantity
+        );
+
+        if (
+          !Number.isInteger(quantity) ||
+          quantity < 1 ||
+          quantity > 50
+        ) {
+          throw new Error(
+            `Invalid quantity for ${menuItem.name}.`
+          );
+        }
       }
 
       /*
        * ---------------------------------------------------------
-       * 3. Calculate prices using database values
+       * 5. Calculate authoritative prices
        * ---------------------------------------------------------
        */
 
@@ -270,22 +374,31 @@ export default function CheckoutClient() {
             return sum;
           }
 
+          const quantity = Number(
+            cartItem.quantity
+          );
+
           return (
             sum +
             Number(menuItem.price) *
-              Number(cartItem.quantity)
+              quantity
           );
         },
         0
       );
 
       const verifiedDeliveryFee =
-        verifiedSubtotal >= FREE_DELIVERY_THRESHOLD
+        verifiedSubtotal >=
+        FREE_DELIVERY_THRESHOLD
           ? 0
           : DELIVERY_FEE;
 
       const verifiedTaxes =
-        verifiedSubtotal * TAX_RATE;
+        Math.round(
+          verifiedSubtotal *
+            TAX_RATE *
+            100
+        ) / 100;
 
       const verifiedTotal =
         verifiedSubtotal +
@@ -294,55 +407,44 @@ export default function CheckoutClient() {
 
       /*
        * ---------------------------------------------------------
-       * 4. Create order
-       *
-       * IMPORTANT:
-       * order_number is NOT inserted manually.
-       *
-       * Database schema:
-       * order_number bigint GENERATED ALWAYS AS IDENTITY
-       *
-       * Supabase/PostgreSQL will generate it automatically.
+       * 6. Create order
        * ---------------------------------------------------------
        */
 
-      const { data: order, error: orderError } =
-        await supabase
-          .from("orders")
-          .insert({
-            restaurant_id: restaurantId,
-            customer_id: user.id,
-            status: "pending",
-            order_type: "delivery",
-            subtotal: verifiedSubtotal,
-            delivery_fee: verifiedDeliveryFee,
-            discount_amount: 0,
-            total_amount: verifiedTotal,
-            customer_name: form.name.trim(),
-            customer_phone: form.phone.trim(),
-            delivery_address: `${form.address.trim()}, ${form.city.trim()}`,
-            special_instructions:
-              form.deliveryNote.trim() || null,
-          })
-          .select("id, order_number")
-          .single();
+      const {
+        data: order,
+        error: orderError,
+      } = await supabase
+        .from("orders")
+        .insert({
+          restaurant_id: restaurantId,
+          customer_id: user.id,
+          status: "pending",
+          order_type: "delivery",
+          subtotal: verifiedSubtotal,
+          delivery_fee: verifiedDeliveryFee,
+          discount_amount: 0,
+          total_amount: verifiedTotal,
+          customer_name: form.name.trim(),
+          customer_phone: form.phone.trim(),
+          delivery_address: `${form.address.trim()}, ${form.city.trim()}`,
+          special_instructions:
+            form.deliveryNote.trim() || null,
+        })
+        .select("id, order_number")
+        .single();
 
       if (orderError) {
-  console.error("ORDER INSERT FAILED");
-  console.error("message:", orderError.message);
-  console.error("details:", orderError.details);
-  console.error("hint:", orderError.hint);
-  console.error("code:", orderError.code);
-  console.error("full error:", JSON.stringify(orderError, null, 2));
+        console.error(
+          "Order insert failed:",
+          orderError
+        );
 
-  throw new Error(
-    orderError.message ||
-      orderError.details ||
-      "Unable to create order."
-  );
-}
-
-
+        throw new Error(
+          orderError.message ||
+            "Unable to create order."
+        );
+      }
 
       if (!order) {
         throw new Error(
@@ -352,39 +454,49 @@ export default function CheckoutClient() {
 
       /*
        * ---------------------------------------------------------
-       * 5. Create order items
+       * 7. Create order items
        * ---------------------------------------------------------
        */
 
-      const orderItems = cart.map((cartItem) => {
-        const menuItem = verifiedItems.find(
-          (item) => item.id === cartItem.id
-        );
+      const orderItems = cart.map(
+        (cartItem) => {
+          const menuItem =
+            verifiedItems.find(
+              (item) =>
+                item.id === cartItem.id
+            );
 
-        if (!menuItem) {
-          throw new Error(
-            `Menu item ${cartItem.id} was not found.`
+          if (!menuItem) {
+            throw new Error(
+              `Menu item ${cartItem.id} was not found.`
+            );
+          }
+
+          const quantity = Number(
+            cartItem.quantity
           );
+
+          const itemPrice = Number(
+            menuItem.price
+          );
+
+          return {
+            order_id: order.id,
+            menu_item_id: menuItem.id,
+            item_name: menuItem.name,
+            item_price: itemPrice,
+            quantity,
+            item_total:
+              itemPrice * quantity,
+          };
         }
+      );
 
-        const quantity = Number(cartItem.quantity);
-        const itemPrice = Number(menuItem.price);
-        const itemTotal = itemPrice * quantity;
-
-        return {
-          order_id: order.id,
-          menu_item_id: menuItem.id,
-          item_name: menuItem.name,
-          item_price: itemPrice,
-          quantity,
-          item_total: itemTotal,
-        };
-      });
-
-      const { error: orderItemsError } =
-        await supabase
-          .from("order_items")
-          .insert(orderItems);
+      const {
+        error: orderItemsError,
+      } = await supabase
+        .from("order_items")
+        .insert(orderItems);
 
       if (orderItemsError) {
         console.error(
@@ -392,48 +504,43 @@ export default function CheckoutClient() {
           orderItemsError
         );
 
-        /*
-         * The order itself already exists.
-         * We stop here rather than pretending the order
-         * was completed successfully.
-         */
-        throw orderItemsError;
-      }
-
-      /*
-       * ---------------------------------------------------------
-       * 6. Create payment record
-       * ---------------------------------------------------------
-       *
-       * Current checkout uses Cash on Delivery.
-       * Payment is initially pending.
-       * ---------------------------------------------------------
-       */
-
-      const { error: paymentError } =
-        await supabase
-          .from("payments")
-          .insert({
-            order_id: order.id,
-            amount: verifiedTotal,
-            payment_method: "cod",
-            payment_status: "pending",
-          });
-
-      /*
-       * Payment record failure should not hide the successful
-       * order if the restaurant can still process the order.
-       */
-      if (paymentError) {
-        console.error(
-          "Payment record creation error:",
-          paymentError
+        throw new Error(
+          "Your order could not be completed because some order items failed to save."
         );
       }
 
       /*
        * ---------------------------------------------------------
-       * 7. Clear cart
+       * 8. Create payment record
+       * ---------------------------------------------------------
+       */
+
+      const {
+        error: paymentError,
+      } = await supabase
+        .from("payments")
+        .insert({
+          order_id: order.id,
+          amount: verifiedTotal,
+          payment_method: "cod",
+          payment_status: "pending",
+        });
+
+      if (paymentError) {
+        console.error(
+          "Payment record creation error:",
+          paymentError
+        );
+
+        /*
+         * The order and order items already exist.
+         * COD orders can still be processed.
+         */
+      }
+
+      /*
+       * ---------------------------------------------------------
+       * 9. Clear cart
        * ---------------------------------------------------------
        */
 
@@ -441,10 +548,7 @@ export default function CheckoutClient() {
 
       /*
        * ---------------------------------------------------------
-       * 8. Redirect to success page
-       *
-       * order.order_number is the automatically generated
-       * identity value returned by PostgreSQL.
+       * 10. Redirect
        * ---------------------------------------------------------
        */
 
@@ -479,9 +583,16 @@ export default function CheckoutClient() {
       <>
         <Navbar />
 
-        <main className="min-h-screen bg-black text-white flex items-center justify-center px-6">
-          <div className="text-center">
-            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-[#c9a45c]" />
+        <main className="flex min-h-screen items-center justify-center bg-black px-6 text-white">
+          <div
+            className="text-center"
+            role="status"
+            aria-live="polite"
+          >
+            <div
+              className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-[#c9a45c]"
+              aria-hidden="true"
+            />
 
             <p className="text-sm text-white/60">
               Loading checkout...
@@ -497,7 +608,7 @@ export default function CheckoutClient() {
       <>
         <Navbar />
 
-        <main className="min-h-screen bg-black text-white flex items-center justify-center px-6">
+        <main className="flex min-h-screen items-center justify-center bg-black px-6 text-white">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
             <h1 className="text-2xl font-semibold">
               Your cart is empty
@@ -528,7 +639,7 @@ export default function CheckoutClient() {
         <div className="mx-auto max-w-6xl">
           <div className="mb-10">
             <p className="text-xs uppercase tracking-[0.3em] text-[#c9a45c]">
-              AURA
+              Aarambh Restaurant
             </p>
 
             <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">
@@ -541,7 +652,11 @@ export default function CheckoutClient() {
           </div>
 
           {error && (
-            <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            <div
+              className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+              role="alert"
+              aria-live="assertive"
+            >
               {error}
             </div>
           )}
@@ -573,6 +688,8 @@ export default function CheckoutClient() {
                       )
                     }
                     placeholder="Enter your full name"
+                    autoComplete="name"
+                    maxLength={100}
                     className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
@@ -596,6 +713,9 @@ export default function CheckoutClient() {
                       )
                     }
                     placeholder="Enter your phone number"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    maxLength={15}
                     className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
@@ -619,6 +739,8 @@ export default function CheckoutClient() {
                     }
                     placeholder="House/flat number, street, area"
                     rows={4}
+                    maxLength={500}
+                    autoComplete="street-address"
                     className="w-full resize-none rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
@@ -642,6 +764,8 @@ export default function CheckoutClient() {
                       )
                     }
                     placeholder="Enter your city"
+                    autoComplete="address-level2"
+                    maxLength={100}
                     className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
@@ -668,6 +792,7 @@ export default function CheckoutClient() {
                     }
                     placeholder="Any special instructions?"
                     rows={3}
+                    maxLength={300}
                     className="w-full resize-none rounded-xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-[#c9a45c]"
                   />
                 </div>
@@ -693,9 +818,9 @@ export default function CheckoutClient() {
 
                       <p className="mt-1 text-xs text-white/40">
                         {item.quantity} × ₹
-                        {Number(item.price).toFixed(
-                          2
-                        )}
+                        {Number(
+                          item.price
+                        ).toFixed(2)}
                       </p>
                     </div>
 
@@ -776,6 +901,7 @@ export default function CheckoutClient() {
                 type="button"
                 onClick={handlePlaceOrder}
                 disabled={placingOrder}
+                aria-busy={placingOrder}
                 className="mt-6 w-full rounded-xl bg-[#c9a45c] px-5 py-3.5 text-sm font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {placingOrder

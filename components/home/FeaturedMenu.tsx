@@ -18,12 +18,10 @@ type MenuItem = {
   display_order: number;
 };
 
-const fallbackImage = "/images/signature-dish.png";
+const fallbackImage = "/images/dishes-01.jpeg";
 
 export default function FeaturedMenu() {
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(
-    []
-  );
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -156,6 +154,7 @@ export default function FeaturedMenu() {
             className="group inline-flex w-fit items-center gap-2 text-sm font-medium text-white/65 transition-colors hover:text-[#c9a45c]"
           >
             Explore Full Menu
+
             <ArrowUpRight
               size={16}
               className="transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
@@ -171,6 +170,7 @@ export default function FeaturedMenu() {
                 size={19}
                 className="animate-spin text-[#c9a45c]"
               />
+
               Loading our favourites...
             </div>
           </div>
@@ -182,6 +182,9 @@ export default function FeaturedMenu() {
             {visibleItems.map((item) => {
               const isVeg = item.item_type === "veg";
 
+              const imageUrl =
+                item.image_url?.trim() || fallbackImage;
+
               return (
                 <article
                   key={item.id}
@@ -189,14 +192,12 @@ export default function FeaturedMenu() {
                 >
                   {/* Image */}
                   <div className="relative aspect-[4/3] overflow-hidden bg-[#151515]">
-                    <img
-                      src={item.image_url || fallbackImage}
-                      alt={item.name}
-                      loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                      onError={(event) => {
-                        event.currentTarget.src =
-                          fallbackImage;
+                    <div
+                      role="img"
+                      aria-label={item.name}
+                      className="h-full w-full bg-cover bg-center bg-no-repeat transition-transform duration-700 group-hover:scale-105"
+                      style={{
+                        backgroundImage: `url("${imageUrl}")`,
                       }}
                     />
 

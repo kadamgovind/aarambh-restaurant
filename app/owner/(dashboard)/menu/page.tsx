@@ -43,14 +43,8 @@ type MenuItemRow = {
   is_featured: boolean;
   display_order: number;
   menu_categories:
-    | {
-        id: string;
-        name: string;
-      }
-    | {
-        id: string;
-        name: string;
-      }[]
+    | { id: string; name: string }
+    | { id: string; name: string }[]
     | null;
 };
 
@@ -88,9 +82,7 @@ function createSlug(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function getCategoryName(
-  relation: MenuItemRow["menu_categories"]
-) {
+function getCategoryName(relation: MenuItemRow["menu_categories"]) {
   if (!relation) {
     return "Uncategorized";
   }
@@ -159,12 +151,14 @@ export default function MenuPage() {
            Find owner's restaurant
         --------------------------------------------------- */
 
-        const { data: restaurant, error: restaurantError } =
-          await supabase
-            .from("restaurants")
-            .select("id")
-            .eq("owner_id", user.id)
-            .maybeSingle();
+        const {
+          data: restaurant,
+          error: restaurantError,
+        } = await supabase
+          .from("restaurants")
+          .select("id")
+          .eq("owner_id", user.id)
+          .maybeSingle();
 
         if (restaurantError) {
           throw new Error(restaurantError.message);
@@ -178,19 +172,21 @@ export default function MenuPage() {
            Load categories
         --------------------------------------------------- */
 
-        const { data: categoryData, error: categoryError } =
-          await supabase
-            .from("menu_categories")
-            .select(
-              "id, name, description, display_order, is_active"
-            )
-            .eq("restaurant_id", restaurant.id)
-            .order("display_order", {
-              ascending: true,
-            })
-            .order("name", {
-              ascending: true,
-            });
+        const {
+          data: categoryData,
+          error: categoryError,
+        } = await supabase
+          .from("menu_categories")
+          .select(
+            "id, name, description, display_order, is_active"
+          )
+          .eq("restaurant_id", restaurant.id)
+          .order("display_order", {
+            ascending: true,
+          })
+          .order("name", {
+            ascending: true,
+          });
 
         if (categoryError) {
           throw new Error(categoryError.message);
@@ -212,11 +208,13 @@ export default function MenuPage() {
            is_available = true here.
         --------------------------------------------------- */
 
-        const { data: itemData, error: itemError } =
-          await supabase
-            .from("menu_items")
-            .select(
-              `
+        const {
+          data: itemData,
+          error: itemError,
+        } = await supabase
+          .from("menu_items")
+          .select(
+            `
               id,
               restaurant_id,
               category_id,
@@ -234,14 +232,14 @@ export default function MenuPage() {
                 name
               )
             `
-            )
-            .eq("restaurant_id", restaurant.id)
-            .order("display_order", {
-              ascending: true,
-            })
-            .order("created_at", {
-              ascending: false,
-            });
+          )
+          .eq("restaurant_id", restaurant.id)
+          .order("display_order", {
+            ascending: true,
+          })
+          .order("created_at", {
+            ascending: false,
+          });
 
         if (itemError) {
           throw new Error(itemError.message);
@@ -332,7 +330,12 @@ export default function MenuPage() {
         matchesType
       );
     });
-  }, [menu, search, categoryFilter, typeFilter]);
+  }, [
+    menu,
+    search,
+    categoryFilter,
+    typeFilter,
+  ]);
 
   /* =======================================================
      STATS
@@ -538,12 +541,14 @@ export default function MenuPage() {
          Find restaurant
       --------------------------------------------------- */
 
-      const { data: restaurant, error: restaurantError } =
-        await supabase
-          .from("restaurants")
-          .select("id")
-          .eq("owner_id", user.id)
-          .maybeSingle();
+      const {
+        data: restaurant,
+        error: restaurantError,
+      } = await supabase
+        .from("restaurants")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
 
       if (restaurantError) {
         throw new Error(restaurantError.message);
@@ -573,30 +578,31 @@ export default function MenuPage() {
           );
         }
 
-        const { error: updateError } =
-          await supabase
-            .from("menu_items")
-            .update({
-              category_id: form.categoryId,
-              name: form.name.trim(),
-              slug,
-              description:
-                form.description.trim() || null,
-              price,
-              item_type:
-                form.type === "Veg"
-                  ? "veg"
-                  : "non_veg",
-              image_url:
-                form.image.trim() || null,
-              is_available: form.available,
-              is_featured: form.popular,
-            })
-            .eq("id", editingItem.id)
-            .eq(
-              "restaurant_id",
-              restaurant.id
-            );
+        const {
+          error: updateError,
+        } = await supabase
+          .from("menu_items")
+          .update({
+            category_id: form.categoryId,
+            name: form.name.trim(),
+            slug,
+            description:
+              form.description.trim() || null,
+            price,
+            item_type:
+              form.type === "Veg"
+                ? "veg"
+                : "non_veg",
+            image_url:
+              form.image.trim() || null,
+            is_available: form.available,
+            is_featured: form.popular,
+          })
+          .eq("id", editingItem.id)
+          .eq(
+            "restaurant_id",
+            restaurant.id
+          );
 
         if (updateError) {
           throw new Error(updateError.message);
@@ -616,27 +622,28 @@ export default function MenuPage() {
             restaurant.id
           );
 
-        const { error: insertError } =
-          await supabase
-            .from("menu_items")
-            .insert({
-              restaurant_id: restaurant.id,
-              category_id: form.categoryId,
-              name: form.name.trim(),
-              slug,
-              description:
-                form.description.trim() || null,
-              price,
-              item_type:
-                form.type === "Veg"
-                  ? "veg"
-                  : "non_veg",
-              image_url:
-                form.image.trim() || null,
-              is_available: form.available,
-              is_featured: form.popular,
-              display_order: displayOrder,
-            });
+        const {
+          error: insertError,
+        } = await supabase
+          .from("menu_items")
+          .insert({
+            restaurant_id: restaurant.id,
+            category_id: form.categoryId,
+            name: form.name.trim(),
+            slug,
+            description:
+              form.description.trim() || null,
+            price,
+            item_type:
+              form.type === "Veg"
+                ? "veg"
+                : "non_veg",
+            image_url:
+              form.image.trim() || null,
+            is_available: form.available,
+            is_featured: form.popular,
+            display_order: displayOrder,
+          });
 
         if (insertError) {
           throw new Error(insertError.message);
@@ -682,12 +689,14 @@ export default function MenuPage() {
         throw new Error("Please login first.");
       }
 
-      const { data: restaurant, error: restaurantError } =
-        await supabase
-          .from("restaurants")
-          .select("id")
-          .eq("owner_id", user.id)
-          .maybeSingle();
+      const {
+        data: restaurant,
+        error: restaurantError,
+      } = await supabase
+        .from("restaurants")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
 
       if (restaurantError) {
         throw new Error(restaurantError.message);
@@ -699,17 +708,18 @@ export default function MenuPage() {
         );
       }
 
-      const { error: updateError } =
-        await supabase
-          .from("menu_items")
-          .update({
-            is_available: !item.available,
-          })
-          .eq("id", item.id)
-          .eq(
-            "restaurant_id",
-            restaurant.id
-          );
+      const {
+        error: updateError,
+      } = await supabase
+        .from("menu_items")
+        .update({
+          is_available: !item.available,
+        })
+        .eq("id", item.id)
+        .eq(
+          "restaurant_id",
+          restaurant.id
+        );
 
       if (updateError) {
         throw new Error(updateError.message);
@@ -766,12 +776,14 @@ export default function MenuPage() {
         throw new Error("Please login first.");
       }
 
-      const { data: restaurant, error: restaurantError } =
-        await supabase
-          .from("restaurants")
-          .select("id")
-          .eq("owner_id", user.id)
-          .maybeSingle();
+      const {
+        data: restaurant,
+        error: restaurantError,
+      } = await supabase
+        .from("restaurants")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
 
       if (restaurantError) {
         throw new Error(restaurantError.message);
@@ -783,17 +795,18 @@ export default function MenuPage() {
         );
       }
 
-      const { error: updateError } =
-        await supabase
-          .from("menu_items")
-          .update({
-            is_featured: !item.popular,
-          })
-          .eq("id", item.id)
-          .eq(
-            "restaurant_id",
-            restaurant.id
-          );
+      const {
+        error: updateError,
+      } = await supabase
+        .from("menu_items")
+        .update({
+          is_featured: !item.popular,
+        })
+        .eq("id", item.id)
+        .eq(
+          "restaurant_id",
+          restaurant.id
+        );
 
       if (updateError) {
         throw new Error(updateError.message);
@@ -850,12 +863,14 @@ export default function MenuPage() {
         throw new Error("Please login first.");
       }
 
-      const { data: restaurant, error: restaurantError } =
-        await supabase
-          .from("restaurants")
-          .select("id")
-          .eq("owner_id", user.id)
-          .maybeSingle();
+      const {
+        data: restaurant,
+        error: restaurantError,
+      } = await supabase
+        .from("restaurants")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
 
       if (restaurantError) {
         throw new Error(restaurantError.message);
@@ -867,15 +882,16 @@ export default function MenuPage() {
         );
       }
 
-      const { error: deleteError } =
-        await supabase
-          .from("menu_items")
-          .delete()
-          .eq("id", deleteItem.id)
-          .eq(
-            "restaurant_id",
-            restaurant.id
-          );
+      const {
+        error: deleteError,
+      } = await supabase
+        .from("menu_items")
+        .delete()
+        .eq("id", deleteItem.id)
+        .eq(
+          "restaurant_id",
+          restaurant.id
+        );
 
       if (deleteError) {
         throw new Error(deleteError.message);
@@ -910,223 +926,220 @@ export default function MenuPage() {
   ======================================================= */
 
   return (
-    <main className="min-h-screen bg-[#080808] text-white">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <main className="min-h-screen">
+      {/* HEADER */}
 
-        {/* HEADER */}
+      <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="mb-1 text-sm font-medium text-white/40">
+            Restaurant Management
+          </p>
 
-        <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="mb-1 text-sm font-medium text-white/40">
-              Restaurant Management
-            </p>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Menu
+          </h1>
 
-            <h1 className="text-3xl font-semibold tracking-tight">
-              Menu
-            </h1>
+          <p className="mt-1 text-sm text-white/40">
+            Manage dishes, availability and featured items.
+          </p>
+        </div>
 
-            <p className="mt-1 text-sm text-white/40">
-              Manage dishes, availability and featured items.
-            </p>
-          </div>
+        <button
+          onClick={openAddModal}
+          disabled={categories.length === 0}
+          className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          + Add New Dish
+        </button>
+      </div>
+
+      {/* ERROR */}
+
+      {error && (
+        <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-4 text-sm text-red-300 sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+
+          <button
+            onClick={() =>
+              setRefreshKey((current) => current + 1)
+            }
+            className="rounded-lg border border-red-400/20 px-3 py-2 text-xs font-medium hover:bg-red-400/10"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* NO CATEGORY */}
+
+      {!loading && categories.length === 0 && (
+        <div className="mb-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-5">
+          <p className="font-medium text-yellow-300">
+            No menu categories found.
+          </p>
+
+          <p className="mt-1 text-sm text-yellow-200/60">
+            Create at least one category in{" "}
+            <span className="font-medium">
+              menu_categories
+            </span>{" "}
+            before adding dishes.
+          </p>
+        </div>
+      )}
+
+      {/* STATS */}
+
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          title="Total Dishes"
+          value={loading ? "—" : totalItems}
+        />
+
+        <StatCard
+          title="Available"
+          value={loading ? "—" : availableItems}
+        />
+
+        <StatCard
+          title="Unavailable"
+          value={loading ? "—" : unavailableItems}
+        />
+
+        <StatCard
+          title="Featured"
+          value={loading ? "—" : popularItems}
+        />
+      </div>
+
+      {/* FILTERS */}
+
+      <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="grid gap-3 md:grid-cols-[1fr_200px_160px]">
+          <input
+            value={search}
+            onChange={(e) =>
+              setSearch(e.target.value)
+            }
+            placeholder="Search dishes..."
+            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none placeholder:text-white/25 focus:border-white/30"
+          />
+
+          <select
+            value={categoryFilter}
+            onChange={(e) =>
+              setCategoryFilter(e.target.value)
+            }
+            className="rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none"
+          >
+            <option
+              value="All"
+              className="bg-black"
+            >
+              All Categories
+            </option>
+
+            {categories.map((category) => (
+              <option
+                key={category.id}
+                value={category.id}
+                className="bg-black"
+              >
+                {category.name}
+                {!category.is_active
+                  ? " (Inactive)"
+                  : ""}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={typeFilter}
+            onChange={(e) =>
+              setTypeFilter(e.target.value)
+            }
+            className="rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none"
+          >
+            <option
+              value="All"
+              className="bg-black"
+            >
+              All Types
+            </option>
+
+            <option
+              value="Veg"
+              className="bg-black"
+            >
+              Veg
+            </option>
+
+            <option
+              value="Non-Veg"
+              className="bg-black"
+            >
+              Non-Veg
+            </option>
+          </select>
+        </div>
+      </div>
+
+      {/* CONTENT */}
+
+      {loading ? (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map(
+            (item) => (
+              <div
+                key={item}
+                className="h-[430px] animate-pulse rounded-2xl border border-white/10 bg-white/[0.03]"
+              />
+            )
+          )}
+        </div>
+      ) : filteredMenu.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] py-20 text-center">
+          <div className="text-4xl">🍽️</div>
+
+          <h3 className="mt-4 text-lg font-semibold">
+            No dishes found
+          </h3>
+
+          <p className="mt-1 text-sm text-white/40">
+            Try changing your filters or add a new dish.
+          </p>
 
           <button
             onClick={openAddModal}
             disabled={categories.length === 0}
-            className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-5 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black disabled:opacity-40"
           >
-            + Add New Dish
+            Add New Dish
           </button>
         </div>
-
-        {/* ERROR */}
-
-        {error && (
-          <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-4 text-sm text-red-300 sm:flex-row sm:items-center sm:justify-between">
-            <span>{error}</span>
-
-            <button
-              onClick={() =>
-                setRefreshKey((current) => current + 1)
+      ) : (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {filteredMenu.map((item) => (
+            <MenuCard
+              key={item.id}
+              item={item}
+              actionId={actionId}
+              onEdit={() =>
+                openEditModal(item)
               }
-              className="rounded-lg border border-red-400/20 px-3 py-2 text-xs font-medium hover:bg-red-400/10"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* NO CATEGORY */}
-
-        {!loading && categories.length === 0 && (
-          <div className="mb-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-5">
-            <p className="font-medium text-yellow-300">
-              No menu categories found.
-            </p>
-
-            <p className="mt-1 text-sm text-yellow-200/60">
-              Create at least one category in{" "}
-              <span className="font-medium">
-                menu_categories
-              </span>{" "}
-              before adding dishes.
-            </p>
-          </div>
-        )}
-
-        {/* STATS */}
-
-        <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard
-            title="Total Dishes"
-            value={loading ? "—" : totalItems}
-          />
-
-          <StatCard
-            title="Available"
-            value={loading ? "—" : availableItems}
-          />
-
-          <StatCard
-            title="Unavailable"
-            value={loading ? "—" : unavailableItems}
-          />
-
-          <StatCard
-            title="Featured"
-            value={loading ? "—" : popularItems}
-          />
-        </div>
-
-        {/* FILTERS */}
-
-        <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="grid gap-3 md:grid-cols-[1fr_200px_160px]">
-            <input
-              value={search}
-              onChange={(e) =>
-                setSearch(e.target.value)
+              onDelete={() =>
+                setDeleteItem(item)
               }
-              placeholder="Search dishes..."
-              className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none placeholder:text-white/25 focus:border-white/30"
+              onToggleAvailability={() =>
+                toggleAvailability(item)
+              }
+              onTogglePopular={() =>
+                togglePopular(item)
+              }
             />
-
-            <select
-              value={categoryFilter}
-              onChange={(e) =>
-                setCategoryFilter(e.target.value)
-              }
-              className="rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none"
-            >
-              <option
-                value="All"
-                className="bg-black"
-              >
-                All Categories
-              </option>
-
-              {categories.map((category) => (
-                <option
-                  key={category.id}
-                  value={category.id}
-                  className="bg-black"
-                >
-                  {category.name}
-                  {!category.is_active
-                    ? " (Inactive)"
-                    : ""}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={typeFilter}
-              onChange={(e) =>
-                setTypeFilter(e.target.value)
-              }
-              className="rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none"
-            >
-              <option
-                value="All"
-                className="bg-black"
-              >
-                All Types
-              </option>
-
-              <option
-                value="Veg"
-                className="bg-black"
-              >
-                Veg
-              </option>
-
-              <option
-                value="Non-Veg"
-                className="bg-black"
-              >
-                Non-Veg
-              </option>
-            </select>
-          </div>
+          ))}
         </div>
-
-        {/* CONTENT */}
-
-        {loading ? (
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map(
-              (item) => (
-                <div
-                  key={item}
-                  className="h-[430px] animate-pulse rounded-2xl border border-white/10 bg-white/[0.03]"
-                />
-              )
-            )}
-          </div>
-        ) : filteredMenu.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] py-20 text-center">
-            <div className="text-4xl">🍽️</div>
-
-            <h3 className="mt-4 text-lg font-semibold">
-              No dishes found
-            </h3>
-
-            <p className="mt-1 text-sm text-white/40">
-              Try changing your filters or add a new dish.
-            </p>
-
-            <button
-              onClick={openAddModal}
-              disabled={categories.length === 0}
-              className="mt-5 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black disabled:opacity-40"
-            >
-              Add New Dish
-            </button>
-          </div>
-        ) : (
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {filteredMenu.map((item) => (
-              <MenuCard
-                key={item.id}
-                item={item}
-                actionId={actionId}
-                onEdit={() =>
-                  openEditModal(item)
-                }
-                onDelete={() =>
-                  setDeleteItem(item)
-                }
-                onToggleAvailability={() =>
-                  toggleAvailability(item)
-                }
-                onTogglePopular={() =>
-                  togglePopular(item)
-                }
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* ===================================================
           ADD / EDIT MODAL
@@ -1135,7 +1148,6 @@ export default function MenuPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-[#111111] shadow-2xl">
-
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
               <div>
                 <h2 className="text-xl font-semibold">
@@ -1183,18 +1195,15 @@ export default function MenuPage() {
                   className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm outline-none placeholder:text-white/20 focus:border-white/30"
                 />
 
-                {form.image && (
-                  <div className="mt-3 overflow-hidden rounded-xl border border-white/10">
-                    <img
-                      src={form.image}
-                      alt="Preview"
-                      className="h-48 w-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display =
-                          "none";
-                      }}
-                    />
-                  </div>
+                {form.image.trim() && (
+                  <div
+                    role="img"
+                    aria-label="Preview"
+                    className="mt-3 h-48 w-full overflow-hidden rounded-xl border border-white/10 bg-black bg-cover bg-center bg-no-repeat"
+                    style={{
+                      backgroundImage: `url("${form.image.trim()}")`,
+                    }}
+                  />
                 )}
               </div>
 
@@ -1401,8 +1410,8 @@ export default function MenuPage() {
                   {saving
                     ? "Saving..."
                     : editingItem
-                    ? "Save Changes"
-                    : "Add Dish"}
+                      ? "Save Changes"
+                      : "Add Dish"}
                 </button>
               </div>
             </form>
@@ -1509,19 +1518,17 @@ function MenuCard({
   const isActionLoading = actionId === item.id;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] transition hover:border-white/20">
-
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
       {/* IMAGE */}
 
       <div className="relative h-52 bg-white/[0.04]">
         {item.image ? (
-          <img
-            src={item.image}
-            alt={item.name}
-            className="h-full w-full object-cover"
-            onError={(e) => {
-              e.currentTarget.style.display =
-                "none";
+          <div
+            role="img"
+            aria-label={item.name}
+            className="h-full w-full bg-cover bg-center bg-no-repeat"
+            style={{
+              backgroundImage: `url("${item.image}")`,
             }}
           />
         ) : (
@@ -1680,7 +1687,7 @@ function Toggle({
       className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left"
     >
       <div>
-        <p className="text-sm font-medium">
+        <p className="font-medium">
           {label}
         </p>
 
